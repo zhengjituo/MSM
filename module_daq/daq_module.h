@@ -30,7 +30,7 @@ public:
 
 private:
     void onConfigure(const msm::Json& data);
-    void onStart();
+    bool onStart();
     void onStop();
     void onReset();
     void onStatus(msm::Message& response);
@@ -48,6 +48,9 @@ private:
     std::string voltageRange_ = "1000";
     int trigLevel_ = 200;
     std::string trigSource_ = "4";
+    std::string trigPolarity_ = "1";
+    int externalTrigLevel_ = 20;
+    std::string globalTrigMode_ = "0";
 
     std::atomic<int64_t> totalFrames_[NCH]{};
     std::atomic<size_t> frameSize_[NCH]{};

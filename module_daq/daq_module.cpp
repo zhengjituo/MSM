@@ -50,7 +50,15 @@ void DAQModule::handleState(const msm::Message& msg) {
     if (msg.cmd == "Configure") {
         onConfigure(msg.data);
     } else if (msg.cmd == "Start") {
-        onStart();
+        bool started = onStart();
+        if (started) {
+            msm::Message response("Response");
+            response.setTarget(msg.getSender());
+            response.setCorrelationId(msg.getCorrelationId());
+            response.data.set("status", "ok");
+            msm::MessageBus::instance().send(response);
+        }
+
     } else if (msg.cmd == "Stop") {
         onStop();
     } else if (msg.cmd == "Reset") {
@@ -73,26 +81,46 @@ void DAQModule::onConfigure(const msm::Json& data) {
         trigLevel_ = data.getInt("TrigLevel");
     if (data.contains("TrigSource"))
         trigSource_ = data.get("TrigSource");
+    if (data.contains("TrigPolarity"))
+        trigPolarity_ = data.get("TrigPolarity");
+    if (data.contains("ExternalTrigLevel"))
+        externalTrigLevel_ = data.getInt("ExternalTrigLevel");
+    if (data.contains("GlobalTrigMode"))
+        globalTrigMode_ = data.get("GlobalTrigMode");
     std::cout << "[DAQModule] Configured: TrigLength=" << trigLength_
               << " VoltageRange=" << voltageRange_
               << " TrigLevel=" << trigLevel_
-              << " TrigSource=" << trigSource_ << std::endl;
+              << " TrigSource=" << trigSource_
+              << " TrigPolarity=" << trigPolarity_
+              << " ExternalTrigLevel=" << externalTrigLevel_
+              << " GlobalTrigMode=" << globalTrigMode_ << std::endl;
 }
 
-void DAQModule::onStart() {
+bool DAQModule::onStart() {
     if (readerRunning_.load()) {
         std::cerr << "[DAQModule] Already running\n";
-        return;
+        return false;
     }
 
-    CxDeviceSetSdkOption("WithLog", "false");
-    CxDeviceSdkInit();
+    bool ok =
+        CxDeviceSetSdkOption("WithLog", "false") == 0 &&
+        CxDeviceSdkInit() == 0;
+    if (!ok) {
+        std::cerr << "[DAQModule] SDK init failed\n";
+        return false;
+    }
 
     CxChassisHandle chassis = nullptr;
     CxCardHandle* cards = nullptr;
     uint32_t card_count = 0;
-    CxDeviceGetChassis(PXIe, &chassis);
-    CxDeviceGetCards(chassis, &cards, &card_count);
+    ok = CxDeviceGetChassis(PXIe, &chassis) == 0 &&
+         CxDeviceGetCards(chassis, &cards, &card_count) == 0 &&
+         card_count > 0;
+    if (!ok) {
+        std::cerr << "[DAQModule] No chassis/cards found\n";
+        CxDeviceSdkDeinit();
+        return false;
+    }
 
     card_ = nullptr;
     for (uint32_t i = 0; i < card_count; i++) {
@@ -106,24 +134,55 @@ void DAQModule::onStart() {
     if (!card_) {
         std::cerr << "[DAQModule] No 1073 card found\n";
         CxDeviceSdkDeinit();
-        return;
+        return false;
     }
 
-    CxDeviceSetCard(card_, "open");
-    CxDeviceSetCardValue(card_, "ClockSource", "0");
-    CxDeviceSetCard(card_, "init");
-    CxDeviceSetCardValue(card_, "SyncWindowEnable", "0");
-    CxDeviceSetCardValue(card_, "SyncSource", "0");
+    ok = CxDeviceSetCard(card_, "open") == 0;
+    if (!ok) {
+        std::cerr << "[DAQModule] Failed to open card\n";
+        CxDeviceSdkDeinit();
+        return false;
+    }
+
+    ok = CxDeviceSetCardValue(card_, "ClockSource", "0") == 0 &&
+         CxDeviceSetCard(card_, "init") == 0;
+    if (!ok) {
+        std::cerr << "[DAQModule] Card init failed\n";
+        CxDeviceSetCard(card_, "close");
+        CxDeviceSdkDeinit();
+        return false;
+    }
+
+    ok = CxDeviceSetCardValue(card_, "SyncWindowEnable", "0") == 0 &&
+         CxDeviceSetCardValue(card_, "SyncSource", "0") == 0 &&
+         CxDeviceSetCardValue(card_, "ExternalTrigLevel",
+                              std::to_string(externalTrigLevel_).c_str()) == 0 &&
+         CxDeviceSetCardValue(card_, "GlobalTrigMode",
+                              globalTrigMode_.c_str()) == 0;
+    if (!ok)
+        std::cerr << "[DAQModule] Warning: some card-level config failed\n";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     for (int i = 0; i < NCH; i++) {
         int ch = CHANNELS[i];
-        CxDeviceSetChannelValue(card_, ch, "GlobalTrigEnable", "1");
-        CxDeviceSetChannelValue(card_, ch, "TrigSource", trigSource_.c_str());
-        CxDeviceSetChannelValue(card_, ch, "TrigMode", "2");
-        CxDeviceSetChannelValue(card_, ch, "TrigLength", std::to_string(trigLength_).c_str());
-        CxDeviceSetChannelValue(card_, ch, "TrigPulseWidth", "16");
-        CxDeviceSetChannelValue(card_, ch, "VoltageRange", voltageRange_.c_str());
-        CxDeviceSetChannelValue(card_, ch, "TrigLevel", std::to_string(trigLevel_).c_str());
+        ok = CxDeviceSetChannelValue(card_, ch, "GlobalTrigEnable", "1") == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "TrigSource", trigSource_.c_str()) == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "TrigMode", "2") == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "TrigPolarity", trigPolarity_.c_str()) == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "TrigLength",
+                                     std::to_string(trigLength_).c_str()) == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "TrigPulseWidth", "16") == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "VoltageRange",
+                                     voltageRange_.c_str()) == 0 &&
+             CxDeviceSetChannelValue(card_, ch, "TrigLevel",
+                                     std::to_string(trigLevel_).c_str()) == 0;
+        if (!ok) {
+            std::cerr << "[DAQModule] Channel " << ch << " config failed\n";
+            CxDeviceSdkDeinit();
+            card_ = nullptr;
+            return false;
+        }
     }
 
     for (int i = 0; i < NCH; i++) {
@@ -140,6 +199,7 @@ void DAQModule::onStart() {
     readerThread_ = std::thread(&DAQModule::readerLoop, this);
 
     std::cout << "[DAQModule] Started, 4 channels running\n";
+    return true;
 }
 
 void DAQModule::onStop() {
