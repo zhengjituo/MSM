@@ -145,29 +145,28 @@ bool DAQModule::onStart() {
         std::cout << "[DAQModule] ch" << ch << " recv started\n";
     }
 
-    // Wait for 1073 to settle into acquisition state
+    // Wait for 1073 to settle
     std::cout << "[DAQModule] Waiting for 1073 to stabilize...\n";
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    for (int i = 0; i < NCH; i++)
+        totalFrames_[i].store(0);
+
+    // Start reader BEFORE trigger — 立即开始轮询，一旦触发就有数据
+    readerRunning_ = true;
+    readerThread_ = std::thread(&DAQModule::readerLoop, this);
+    std::cout << "[DAQModule] Reader thread started\n";
 
     // ── 3010 init + trigger on ─────────────────────────────
     if (card3010_) {
         if (init3010()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             setTriggerOutput(true);
             std::cout << "[DAQModule] 3010 trigger enabled\n";
         }
     } else {
         std::cout << "[DAQModule] No 3010 card, trigger not started\n";
     }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    for (int i = 0; i < NCH; i++)
-        totalFrames_[i].store(0);
-
-    readerRunning_ = true;
-    readerThread_ = std::thread(&DAQModule::readerLoop, this);
-
-    std::cout << "[DAQModule] Reader thread started, 4 channels running\n";
     return true;
 }
 

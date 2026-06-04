@@ -1,4 +1,6 @@
 #include "IPCServer.h"
+#include "NIStringParser.h"
+#include "MessageBus.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -182,6 +184,28 @@ bool IPCServer::handleClient(int clientFd)
 
 std::string IPCServer::process(const std::string& line)
 {
+    // MSG — relay NI string to MessageBus before normal parsing
+    if (line.size() > 4 &&
+        (line[0] == 'M' || line[0] == 'm') &&
+        (line[1] == 'S' || line[1] == 's') &&
+        (line[2] == 'G' || line[2] == 'g') &&
+        line[3] == ' ') {
+        std::string niStr = line.substr(4);
+        auto trim = [](std::string& s) {
+            size_t st = s.find_first_not_of(" \t");
+            size_t en = s.find_last_not_of(" \t");
+            if (st == std::string::npos) { s.clear(); return; }
+            s = s.substr(st, en - st + 1);
+        };
+        trim(niStr);
+        if (!niStr.empty()) {
+            Message msg = NIStringParser::parse(niStr, "IPCServer");
+            MessageBus::instance().send(msg);
+            return "{\"OK\":\"sent\"}";
+        }
+        return R"({"error":"empty"})";
+    }
+
     std::istringstream iss(line);
     std::string cmd, target, value;
     iss >> cmd >> target >> value;
