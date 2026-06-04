@@ -105,13 +105,12 @@ bool DAQModule::onStart() {
     std::cout << "[DAQModule] Found " << card_count << " cards\n";
 
     card_ = nullptr;
+    card3010_ = nullptr;
     for (uint32_t i = 0; i < card_count; i++) {
         uint32_t did = 0;
         CxDeviceGetCardDeviceId(cards[i], &did);
-        if (did == 0x1073) {
-            card_ = cards[i];
-            break;
-        }
+        if (did == 0x1073) card_ = cards[i];
+        else if (did == 0x3010) card3010_ = cards[i];
     }
     if (!card_) {
         std::cerr << "[DAQModule] No 1073 card found\n";
@@ -119,6 +118,7 @@ bool DAQModule::onStart() {
         return false;
     }
 
+    // ── 1073 init ──────────────────────────────────────────
     CxDeviceSetCard(card_, "open");
     CxDeviceSetCardValue(card_, "ClockSource", "0");
     CxDeviceSetCard(card_, "init");
@@ -145,6 +145,22 @@ bool DAQModule::onStart() {
         std::cout << "[DAQModule] ch" << ch << " recv started\n";
     }
 
+    // Wait for 1073 to settle into acquisition state
+    std::cout << "[DAQModule] Waiting for 1073 to stabilize...\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    // ── 3010 init + trigger on ─────────────────────────────
+    if (card3010_) {
+        if (init3010()) {
+            setTriggerOutput(true);
+            std::cout << "[DAQModule] 3010 trigger enabled\n";
+        }
+    } else {
+        std::cout << "[DAQModule] No 3010 card, trigger not started\n";
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     for (int i = 0; i < NCH; i++)
         totalFrames_[i].store(0);
 
@@ -157,6 +173,13 @@ bool DAQModule::onStart() {
 
 void DAQModule::onStop() {
     if (!readerRunning_.load()) return;
+
+    // Stop triggers first
+    if (card3010_) {
+        setTriggerOutput(false);
+        CxDeviceSetCard(card3010_, "close");
+        std::cout << "[DAQModule] 3010 trigger disabled\n";
+    }
 
     readerRunning_ = false;
     if (readerThread_.joinable())
@@ -232,6 +255,31 @@ void DAQModule::readerLoop() {
             std::cout << "[reader] No data after 1000 iterations\n";
         }
     }
+}
+
+bool DAQModule::init3010() {
+    if (!card3010_) return false;
+
+    CxDeviceSetCard(card3010_, "open");
+    CxDeviceSetCard(card3010_, "init");
+    CxDeviceSetCardValue(card3010_, "SyncTrigTrigMux", "2");
+    CxDeviceSetCardValue(card3010_, "SyncTrigGlbSync", "1");
+    CxDeviceSetCardValue(card3010_, "TrigSource", "2");
+    CxDeviceSetCardValue(card3010_, "SoftwareSync", "1");
+
+    std::cout << "[DAQModule] 3010 initialized\n";
+    return true;
+}
+
+bool DAQModule::setTriggerOutput(bool enable) {
+    if (!card3010_) return false;
+    uint32_t val = enable ? 1 : 0;
+    int ret = CxDeviceWriteReg(card3010_, 0x1C020, val);
+    if (ret != 0) {
+        std::cerr << "[DAQModule] 3010 reg write failed: " << ret << "\n";
+        return false;
+    }
+    return true;
 }
 
 void DAQModule::cleanup() {

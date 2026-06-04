@@ -39,8 +39,11 @@ private:
     void cleanup();
 
     void* card_ = nullptr;
+    void* card3010_ = nullptr;
     std::thread readerThread_;
     std::atomic<bool> readerRunning_{false};
+    bool init3010();
+    bool setTriggerOutput(bool enable);
 
     UserCircularBuffer* rings_[NCH];
 
