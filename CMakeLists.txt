@@ -17,6 +17,7 @@ target_include_directories(user_circular_buffer PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 
 add_library(daq_module STATIC
     module_daq/daq_module.cpp
+    module_daq/daq_config.cpp
 )
 target_link_libraries(daq_module
     msm_core

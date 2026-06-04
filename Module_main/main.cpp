@@ -41,6 +41,7 @@ int main() {
     auto& bus = msm::MessageBus::instance();
 
     DAQModule daq;
+    daq.loadConfig("config/app_inittial_config.json");
     ConsumerModule consumer("Consumer",
                             daq.getRing(0), daq.getRing(1),
                             daq.getRing(2), daq.getRing(3));
@@ -57,7 +58,7 @@ int main() {
     std::cout << "[main] Modules started. Sending Configure + Start in 1s...\n";
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    send("Configure >> TrigLength=128, VoltageRange=1000, TrigLevel=200 -@ DAQModule");
+    send("Configure >> -@ DAQModule");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     send("Configure >> BatchSize=10000 -@ Consumer");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));

@@ -72,19 +72,65 @@ void DAQModule::handleState(const msm::Message& msg) {
     }
 }
 
+void DAQModule::loadConfig(const std::string& path) {
+    if (config_.loadFromJson(path)) {
+        std::cout << "[DAQModule] Config loaded from " << path << "\n";
+    } else {
+        std::cerr << "[DAQModule] Failed to load config from " << path << "\n";
+    }
+}
+
 void DAQModule::onConfigure(const msm::Json& data) {
-    if (data.contains("TrigLength"))
-        trigLength_ = data.getInt("TrigLength");
-    if (data.contains("VoltageRange"))
-        voltageRange_ = data.get("VoltageRange");
-    if (data.contains("TrigLevel"))
-        trigLevel_ = data.getInt("TrigLevel");
-    if (data.contains("TrigSource"))
-        trigSource_ = data.get("TrigSource");
-    std::cout << "[DAQModule] Configured: TrigLength=" << trigLength_
-              << " VoltageRange=" << voltageRange_
-              << " TrigLevel=" << trigLevel_
-              << " TrigSource=" << trigSource_ << std::endl;
+    int ci = config_.findCardByType("1073");
+    if (ci < 0) {
+        std::cerr << "[DAQModule] No 1073 card in config\n";
+        return;
+    }
+
+    for (auto& ch : config_.cards[ci].channels) {
+        if (data.contains("TrigLength"))
+            ch.trig_length = data.get("TrigLength");
+        if (data.contains("VoltageRange"))
+            ch.voltage_range = data.get("VoltageRange");
+        if (data.contains("TrigLevel"))
+            ch.trig_level = data.get("TrigLevel");
+        if (data.contains("TrigSource"))
+            ch.trig_source = data.get("TrigSource");
+        if (data.contains("TrigMode"))
+            ch.trig_mode = data.get("TrigMode");
+        if (data.contains("TrigPulseWidth"))
+            ch.trig_pulse_width = data.get("TrigPulseWidth");
+        if (data.contains("TrigPolarity"))
+            ch.trig_polarity = data.get("TrigPolarity");
+        if (data.contains("TrigDelayTime"))
+            ch.trig_delay_time = data.get("TrigDelayTime");
+        if (data.contains("TrigPosition"))
+            ch.trig_position = data.get("TrigPosition");
+        if (data.contains("VoltageOffset"))
+            ch.voltage_offset = data.get("VoltageOffset");
+        if (data.contains("DeadTime"))
+            ch.dead_time = data.get("DeadTime");
+        if (data.contains("FiniteTrigNum"))
+            ch.finite_trig_num = data.get("FiniteTrigNum");
+        if (data.contains("WaveDataEnable"))
+            ch.wave_data_enable = data.get("WaveDataEnable");
+        if (data.contains("WorkMode"))
+            ch.work_mode = data.get("WorkMode");
+        if (data.contains("ExternalTrigPolarity"))
+            ch.external_trig_polarity = data.get("ExternalTrigPolarity");
+    }
+
+    std::cout << "[DAQModule] Configured from message\n";
+    int idx = 0;
+    for (const auto& ch : config_.cards[ci].channels) {
+        std::cout << "  ch" << ch.channel
+                  << " TrigLength=" << ch.trig_length
+                  << " VoltageRange=" << ch.voltage_range
+                  << " TrigLevel=" << ch.trig_level
+                  << " TrigSource=" << ch.trig_source
+                  << "\n";
+        (void)idx++;
+    }
 }
 
 bool DAQModule::onStart() {
@@ -92,6 +138,13 @@ bool DAQModule::onStart() {
         std::cerr << "[DAQModule] Already running\n";
         return false;
     }
+
+    int ci = config_.findCardByType("1073");
+    if (ci < 0) {
+        std::cerr << "[DAQModule] No 1073 card config loaded\n";
+        return false;
+    }
+    const CardConfig& cardCfg = config_.cards[ci];
 
     std::cout << "[DAQModule] Initializing SDK...\n";
     CxDeviceSetSdkOption("WithLog", "false");
@@ -125,21 +178,31 @@ bool DAQModule::onStart() {
     CxDeviceSetCardValue(card_, "SyncWindowEnable", "0");
     CxDeviceSetCardValue(card_, "SyncSource", "0");
 
-    for (int i = 0; i < NCH; i++) {
-        int ch = CHANNELS[i];
+    for (const auto& chCfg : cardCfg.channels) {
+        if (!chCfg.runEnable) {
+            std::cout << "[DAQModule] ch" << chCfg.channel << " disabled, skipping\n";
+            continue;
+        }
+        int ch = chCfg.channel;
         CxDeviceSetChannelValue(card_, ch, "GlobalTrigEnable", "1");
-        CxDeviceSetChannelValue(card_, ch, "TrigSource", trigSource_.c_str());
-        CxDeviceSetChannelValue(card_, ch, "TrigMode", "2");
-        CxDeviceSetChannelValue(card_, ch, "TrigLength", std::to_string(trigLength_).c_str());
-        CxDeviceSetChannelValue(card_, ch, "TrigPulseWidth", "16");
-        CxDeviceSetChannelValue(card_, ch, "VoltageRange", voltageRange_.c_str());
-        CxDeviceSetChannelValue(card_, ch, "TrigLevel", std::to_string(trigLevel_).c_str());
-        std::cout << "[DAQModule] ch" << ch << " configured\n";
+        CxDeviceSetChannelValue(card_, ch, "TrigSource", chCfg.trig_source.c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigMode", chCfg.trig_mode.c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigLength", chCfg.trig_length.c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigPulseWidth", chCfg.trig_pulse_width.c_str());
+        CxDeviceSetChannelValue(card_, ch, "VoltageRange", chCfg.voltage_range.c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigLevel", chCfg.trig_level.c_str());
+        std::cout << "[DAQModule] ch" << ch << " configured ("
+                  << "TrigLength=" << chCfg.trig_length
+                  << " VoltageRange=" << chCfg.voltage_range
+                  << " TrigLevel=" << chCfg.trig_level
+                  << " TrigSource=" << chCfg.trig_source
+                  << ")\n";
     }
 
-    for (int i = 0; i < NCH; i++) {
-        int ch = CHANNELS[i];
-        CxDeviceSetChannelRecvBufferSize(card_, ch, 16 * 1024 * 1024);
+    for (const auto& chCfg : cardCfg.channels) {
+        if (!chCfg.runEnable) continue;
+        int ch = chCfg.channel;
+        CxDeviceSetChannelRecvBufferSize(card_, ch, chCfg.recv_buffer_size);
         CxDeviceStartChannelRecv(card_, ch);
         CxDeviceSetChannel(card_, ch, "run");
         std::cout << "[DAQModule] ch" << ch << " recv started\n";
@@ -179,9 +242,46 @@ void DAQModule::stop() {
 void DAQModule::onStop() {
     if (card3010_) {
         setTriggerOutput(false);
+        std::cout << "[DAQModule] 3010 trigger off, waiting 200ms for residual data...\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    // flush 残余 DMA 数据到 ring buffer（关 reader 前最后一次读取）
+    if (card_) {
+        std::vector<uint8_t> buf(4U * 1024U * 1024U);
+        for (int i = 0; i < NCH; i++) {
+            int ch = CHANNELS[i];
+            void* frames = nullptr;
+            uint32_t n = 0;
+            CxDeviceReadChannelFrames(card_, ch, &frames, &n);
+            if (n == 0) continue;
+
+            auto* rp = static_cast<RawPack*>(frames);
+            size_t flen = rp[0].BufferSize;
+            if (flen == 0) continue;
+            size_t bytes = (size_t)n * flen;
+            if (bytes > buf.size()) buf.resize(bytes);
+            uint8_t* dst = buf.data();
+            for (uint32_t j = 0; j < n; j++) {
+                if (!rp[j].Buffer) { bytes = 0; break; }
+                std::memcpy(dst, rp[j].Buffer, flen);
+                dst += flen;
+            }
+            if (bytes == 0) continue;
+
+            frameSize_[i].store(flen);
+            rings_[i]->setExpectedPacketSize(flen);
+            size_t written = rings_[i]->writeFromDevice(buf.data(), bytes);
+            totalFrames_[i].fetch_add(written / flen);
+            std::cout << "[flush] ch" << ch << " n=" << n
+                      << " flen=" << flen << " written=" << (written / flen) << std::endl;
+        }
+    }
+
+    if (card3010_) {
         CxDeviceSetCard(card3010_, "close");
         card3010_ = nullptr;
-        std::cout << "[DAQModule] 3010 disabled\n";
+        std::cout << "[DAQModule] 3010 closed\n";
     }
 
     readerRunning_ = false;

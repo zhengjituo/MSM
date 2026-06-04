@@ -3,6 +3,7 @@
 
 #include "Module.h"
 #include "user_circular_buffer.h"
+#include "daq_config.h"
 #include <atomic>
 #include <thread>
 #include <cstdint>
@@ -17,6 +18,7 @@ public:
     msm::ModuleVars* getVars() override;
 
     UserCircularBuffer* getRing(int channelIndex);
+    void loadConfig(const std::string& path);
 
     struct Stats {
         int64_t total_frames[4]{};
@@ -47,11 +49,7 @@ private:
     bool setTriggerOutput(bool enable);
 
     UserCircularBuffer* rings_[NCH];
-
-    int trigLength_ = 128;
-    std::string voltageRange_ = "1000";
-    int trigLevel_ = 200;
-    std::string trigSource_ = "4";
+    DaqConfig config_;
 
     std::atomic<int64_t> totalFrames_[NCH]{};
     std::atomic<size_t> frameSize_[NCH]{};
