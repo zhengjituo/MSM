@@ -77,11 +77,11 @@ int main() {
     send("Configure >> BatchSize=10000 -@ Consumer3");
     send("Configure >> BatchSize=10000 -@ Consumer4");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    send("Start -@ DAQModule");
-    send("Start -@ Consumer1");
-    send("Start -@ Consumer2");
-    send("Start -@ Consumer3");
-    send("Start -@ Consumer4");
+    send("Start >> -@ DAQModule");
+    send("Start >> -@ Consumer1");
+    send("Start >> -@ Consumer2");
+    send("Start >> -@ Consumer3");
+    send("Start >> -@ Consumer4");
 
     std::cout << "[main] Commands sent. Type NI commands or 'quit'/'status':\n";
 
@@ -122,11 +122,11 @@ int main() {
 
     std::cout << "\n[main] Shutting down...\n";
 
-    send("Stop -@ DAQModule");
-    send("Stop -@ Consumer1");
-    send("Stop -@ Consumer2");
-    send("Stop -@ Consumer3");
-    send("Stop -@ Consumer4");
+    send("Stop >> -@ DAQModule");
+    send("Stop >> -@ Consumer1");
+    send("Stop >> -@ Consumer2");
+    send("Stop >> -@ Consumer3");
+    send("Stop >> -@ Consumer4");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
