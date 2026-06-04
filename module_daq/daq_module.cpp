@@ -81,19 +81,10 @@ void DAQModule::onConfigure(const msm::Json& data) {
         trigLevel_ = data.getInt("TrigLevel");
     if (data.contains("TrigSource"))
         trigSource_ = data.get("TrigSource");
-    if (data.contains("TrigPolarity"))
-        trigPolarity_ = data.get("TrigPolarity");
-    if (data.contains("ExternalTrigLevel"))
-        externalTrigLevel_ = data.getInt("ExternalTrigLevel");
-    if (data.contains("GlobalTrigMode"))
-        globalTrigMode_ = data.get("GlobalTrigMode");
     std::cout << "[DAQModule] Configured: TrigLength=" << trigLength_
               << " VoltageRange=" << voltageRange_
               << " TrigLevel=" << trigLevel_
-              << " TrigSource=" << trigSource_
-              << " TrigPolarity=" << trigPolarity_
-              << " ExternalTrigLevel=" << externalTrigLevel_
-              << " GlobalTrigMode=" << globalTrigMode_ << std::endl;
+              << " TrigSource=" << trigSource_ << std::endl;
 }
 
 bool DAQModule::onStart() {
@@ -102,25 +93,16 @@ bool DAQModule::onStart() {
         return false;
     }
 
-    bool ok =
-        CxDeviceSetSdkOption("WithLog", "false") == 0 &&
-        CxDeviceSdkInit() == 0;
-    if (!ok) {
-        std::cerr << "[DAQModule] SDK init failed\n";
-        return false;
-    }
+    std::cout << "[DAQModule] Initializing SDK...\n";
+    CxDeviceSetSdkOption("WithLog", "false");
+    CxDeviceSdkInit();
 
     CxChassisHandle chassis = nullptr;
     CxCardHandle* cards = nullptr;
     uint32_t card_count = 0;
-    ok = CxDeviceGetChassis(PXIe, &chassis) == 0 &&
-         CxDeviceGetCards(chassis, &cards, &card_count) == 0 &&
-         card_count > 0;
-    if (!ok) {
-        std::cerr << "[DAQModule] No chassis/cards found\n";
-        CxDeviceSdkDeinit();
-        return false;
-    }
+    CxDeviceGetChassis(PXIe, &chassis);
+    CxDeviceGetCards(chassis, &cards, &card_count);
+    std::cout << "[DAQModule] Found " << card_count << " cards\n";
 
     card_ = nullptr;
     for (uint32_t i = 0; i < card_count; i++) {
@@ -137,52 +119,22 @@ bool DAQModule::onStart() {
         return false;
     }
 
-    ok = CxDeviceSetCard(card_, "open") == 0;
-    if (!ok) {
-        std::cerr << "[DAQModule] Failed to open card\n";
-        CxDeviceSdkDeinit();
-        return false;
-    }
-
-    ok = CxDeviceSetCardValue(card_, "ClockSource", "0") == 0 &&
-         CxDeviceSetCard(card_, "init") == 0;
-    if (!ok) {
-        std::cerr << "[DAQModule] Card init failed\n";
-        CxDeviceSetCard(card_, "close");
-        CxDeviceSdkDeinit();
-        return false;
-    }
-
-    ok = CxDeviceSetCardValue(card_, "SyncWindowEnable", "0") == 0 &&
-         CxDeviceSetCardValue(card_, "SyncSource", "0") == 0 &&
-         CxDeviceSetCardValue(card_, "ExternalTrigLevel",
-                              std::to_string(externalTrigLevel_).c_str()) == 0 &&
-         CxDeviceSetCardValue(card_, "GlobalTrigMode",
-                              globalTrigMode_.c_str()) == 0;
-    if (!ok)
-        std::cerr << "[DAQModule] Warning: some card-level config failed\n";
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CxDeviceSetCard(card_, "open");
+    CxDeviceSetCardValue(card_, "ClockSource", "0");
+    CxDeviceSetCard(card_, "init");
+    CxDeviceSetCardValue(card_, "SyncWindowEnable", "0");
+    CxDeviceSetCardValue(card_, "SyncSource", "0");
 
     for (int i = 0; i < NCH; i++) {
         int ch = CHANNELS[i];
-        ok = CxDeviceSetChannelValue(card_, ch, "GlobalTrigEnable", "1") == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "TrigSource", trigSource_.c_str()) == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "TrigMode", "2") == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "TrigPolarity", trigPolarity_.c_str()) == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "TrigLength",
-                                     std::to_string(trigLength_).c_str()) == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "TrigPulseWidth", "16") == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "VoltageRange",
-                                     voltageRange_.c_str()) == 0 &&
-             CxDeviceSetChannelValue(card_, ch, "TrigLevel",
-                                     std::to_string(trigLevel_).c_str()) == 0;
-        if (!ok) {
-            std::cerr << "[DAQModule] Channel " << ch << " config failed\n";
-            CxDeviceSdkDeinit();
-            card_ = nullptr;
-            return false;
-        }
+        CxDeviceSetChannelValue(card_, ch, "GlobalTrigEnable", "1");
+        CxDeviceSetChannelValue(card_, ch, "TrigSource", trigSource_.c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigMode", "2");
+        CxDeviceSetChannelValue(card_, ch, "TrigLength", std::to_string(trigLength_).c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigPulseWidth", "16");
+        CxDeviceSetChannelValue(card_, ch, "VoltageRange", voltageRange_.c_str());
+        CxDeviceSetChannelValue(card_, ch, "TrigLevel", std::to_string(trigLevel_).c_str());
+        std::cout << "[DAQModule] ch" << ch << " configured\n";
     }
 
     for (int i = 0; i < NCH; i++) {
@@ -190,6 +142,7 @@ bool DAQModule::onStart() {
         CxDeviceSetChannelRecvBufferSize(card_, ch, 16 * 1024 * 1024);
         CxDeviceStartChannelRecv(card_, ch);
         CxDeviceSetChannel(card_, ch, "run");
+        std::cout << "[DAQModule] ch" << ch << " recv started\n";
     }
 
     for (int i = 0; i < NCH; i++)
@@ -198,7 +151,7 @@ bool DAQModule::onStart() {
     readerRunning_ = true;
     readerThread_ = std::thread(&DAQModule::readerLoop, this);
 
-    std::cout << "[DAQModule] Started, 4 channels running\n";
+    std::cout << "[DAQModule] Reader thread started, 4 channels running\n";
     return true;
 }
 
@@ -236,6 +189,7 @@ void DAQModule::onStatus(msm::Message& response) {
 
 void DAQModule::readerLoop() {
     std::vector<uint8_t> buf(4U * 1024U * 1024U);
+    int idle_count = 0;
 
     while (readerRunning_.load()) {
         for (int i = 0; i < NCH; i++) {
@@ -244,6 +198,8 @@ void DAQModule::readerLoop() {
             uint32_t n = 0;
             CxDeviceReadChannelFrames(card_, ch, &frames, &n);
             if (n == 0) continue;
+
+            idle_count = 0;
 
             auto* rp = static_cast<RawPack*>(frames);
             size_t flen = rp[0].BufferSize;
@@ -263,7 +219,17 @@ void DAQModule::readerLoop() {
             frameSize_[i].store(flen);
             rings_[i]->setExpectedPacketSize(flen);
             size_t written = rings_[i]->writeFromDevice(buf.data(), bytes);
-            totalFrames_[i].fetch_add(written / flen);
+            int64_t total = totalFrames_[i].fetch_add(written / flen) + (int64_t)(written / flen);
+            std::cout << "[reader] ch" << ch << " n=" << n
+                      << " flen=" << flen
+                      << " written=" << (written / flen)
+                      << " total=" << total << std::endl;
+        }
+        idle_count++;
+        if (idle_count == 100) {
+            std::cout << "[reader] No data after 100 iterations\n";
+        } else if (idle_count == 1000) {
+            std::cout << "[reader] No data after 1000 iterations\n";
         }
     }
 }

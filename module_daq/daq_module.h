@@ -44,13 +44,10 @@ private:
 
     UserCircularBuffer* rings_[NCH];
 
-    int trigLength_ = 1024;
+    int trigLength_ = 128;
     std::string voltageRange_ = "1000";
     int trigLevel_ = 200;
     std::string trigSource_ = "4";
-    std::string trigPolarity_ = "1";
-    int externalTrigLevel_ = 20;
-    std::string globalTrigMode_ = "0";
 
     std::atomic<int64_t> totalFrames_[NCH]{};
     std::atomic<size_t> frameSize_[NCH]{};
