@@ -145,17 +145,19 @@ bool DAQModule::onStart() {
         std::cout << "[DAQModule] ch" << ch << " recv started\n";
     }
 
-    // 轮询等待所有 4 通道进入采集状态
-    std::cout << "[DAQModule] Waiting for all 4 channels ready...\n";
-    bool ready = waitChannelsReady();
-    if (!ready) {
-        std::cerr << "[DAQModule] Channels not ready, continuing anyway\n";
-    }
+    // 保守等待硬件稳定
+    std::cout << "[DAQModule] Settling 1073 (2s)...\n";
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
     for (int i = 0; i < NCH; i++)
         totalFrames_[i].store(0);
 
-    // ── 3010 init + trigger on (仅当所有通道就绪后) ──────────
+    // 先启动 reader（已开始轮询，等触发数据）
+    readerRunning_ = true;
+    readerThread_ = std::thread(&DAQModule::readerLoop, this);
+    std::cout << "[DAQModule] Reader thread started\n";
+
+    // ── 3010 init + trigger on ─────────────────────────────
     if (card3010_) {
         if (init3010()) {
             setTriggerOutput(true);
@@ -164,11 +166,6 @@ bool DAQModule::onStart() {
     } else {
         std::cout << "[DAQModule] No 3010 card, trigger not started\n";
     }
-
-    // 启动 reader — 此时 3010 已在发触发，立刻有数据
-    readerRunning_ = true;
-    readerThread_ = std::thread(&DAQModule::readerLoop, this);
-    std::cout << "[DAQModule] Reader thread started\n";
     return true;
 }
 
@@ -270,44 +267,6 @@ bool DAQModule::init3010() {
 
     std::cout << "[DAQModule] 3010 initialized\n";
     return true;
-}
-
-bool DAQModule::waitChannelsReady() {
-    auto start = std::chrono::steady_clock::now();
-    const int TIMEOUT_MS = 5000;
-
-    while (true) {
-        bool all_ok = true;
-        for (int i = 0; i < NCH; i++) {
-            uint32_t count = 0;
-            int ret = CxDeviceGetChannelFramesCount(card_, CHANNELS[i], &count);
-            if (ret != 0) {
-                all_ok = false;
-                break;
-            }
-            const char* state = nullptr;
-            int sr = CxDeviceGetChannelStatus(card_, CHANNELS[i], "State", &state);
-            if (sr == 0 && state) {
-                std::cout << "[DAQModule] ch" << CHANNELS[i]
-                          << " state=" << state
-                          << " frames=" << count << "\n";
-                if (strcmp(state, "run") != 0 && strcmp(state, "running") != 0) {
-                    all_ok = false;
-                }
-            }
-        }
-        if (all_ok) {
-            std::cout << "[DAQModule] All 4 channels ready\n";
-            return true;
-        }
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start).count();
-        if (elapsed > TIMEOUT_MS) {
-            std::cerr << "[DAQModule] Timeout after " << TIMEOUT_MS << "ms\n";
-            return false;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
 }
 
 bool DAQModule::setTriggerOutput(bool enable) {
