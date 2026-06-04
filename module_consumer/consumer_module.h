@@ -11,13 +11,10 @@
 
 class ConsumerModule : public msm::Module {
 public:
-    static constexpr int NCH = 4;
+    static constexpr int MAX_CH = 16;
 
     ConsumerModule(const std::string& name,
-                   UserCircularBuffer* ring0,
-                   UserCircularBuffer* ring1,
-                   UserCircularBuffer* ring2,
-                   UserCircularBuffer* ring3);
+                   const std::vector<UserCircularBuffer*>& rings);
     ~ConsumerModule();
 
     void handleState(const msm::Message& msg) override;
@@ -35,13 +32,14 @@ private:
     void onStop();
     void onStatus(msm::Message& response);
 
-    void consumerLoop(int ch, UserCircularBuffer* ring);
+    void consumerLoop(int chIdx, UserCircularBuffer* ring);
 
-    UserCircularBuffer* rings_[NCH];
-    std::thread consumerThreads_[NCH];
+    std::vector<UserCircularBuffer*> rings_;
+    int nCh_ = 0;
+    std::array<std::thread, MAX_CH> consumerThreads_;
+    std::array<std::atomic<int64_t>, MAX_CH> processedFrames_{};
+    std::array<std::atomic<int64_t>, MAX_CH> processedBatches_{};
     std::atomic<bool> running_{false};
-    std::atomic<int64_t> processedFrames_[NCH]{};
-    std::atomic<int64_t> processedBatches_[NCH]{};
 
     size_t batchSize_ = 10000;
 

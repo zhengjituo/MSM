@@ -5,19 +5,19 @@
 #include <thread>
 
 ConsumerModule::ConsumerModule(const std::string& name,
-                               UserCircularBuffer* ring0,
-                               UserCircularBuffer* ring1,
-                               UserCircularBuffer* ring2,
-                               UserCircularBuffer* ring3)
-    : Module(name)
+                               const std::vector<UserCircularBuffer*>& rings)
+    : Module(name), rings_(rings)
 {
-    rings_[0] = ring0;
-    rings_[1] = ring1;
-    rings_[2] = ring2;
-    rings_[3] = ring3;
-    for (int i = 0; i < NCH; i++)
+    nCh_ = (int)rings_.size();
+    if (nCh_ > MAX_CH) {
+        std::cerr << "[" << name_ << "] WARN: " << nCh_ << " rings > MAX_CH="
+                  << MAX_CH << ", truncating\n";
+        nCh_ = MAX_CH;
+    }
+    for (int i = 0; i < nCh_; i++) {
         if (!rings_[i])
             std::cerr << "[" << name_ << "] WARN: null ring[" << i << "]\n";
+    }
     vars_.parent = this;
 }
 
@@ -30,12 +30,12 @@ msm::ModuleVars* ConsumerModule::getVars() {
 }
 
 int64_t ConsumerModule::getProcessedFrames(int ch) const {
-    if (ch < 0 || ch >= NCH) return 0;
+    if (ch < 0 || ch >= nCh_) return 0;
     return processedFrames_[ch].load();
 }
 
 int64_t ConsumerModule::getProcessedBatches(int ch) const {
-    if (ch < 0 || ch >= NCH) return 0;
+    if (ch < 0 || ch >= nCh_) return 0;
     return processedBatches_[ch].load();
 }
 
@@ -64,28 +64,31 @@ void ConsumerModule::onConfigure(const msm::Json& data) {
 void ConsumerModule::onStart() {
     if (running_.load()) return;
     running_ = true;
-    for (int i = 0; i < NCH; i++) {
-        if (rings_[i])
+    int started = 0;
+    for (int i = 0; i < nCh_; i++) {
+        if (rings_[i]) {
             consumerThreads_[i] = std::thread(&ConsumerModule::consumerLoop, this, i, rings_[i]);
+            started++;
+        }
     }
-    std::cout << "[" << name_ << "] " << NCH << " consumer threads started\n";
+    std::cout << "[" << name_ << "] " << started << " consumer thread(s) started\n";
 }
 
 void ConsumerModule::onStop() {
     if (!running_.load()) return;
     running_ = false;
-    for (int i = 0; i < NCH; i++) {
+    for (int i = 0; i < nCh_; i++) {
         if (consumerThreads_[i].joinable())
             consumerThreads_[i].join();
     }
     std::cout << "[" << name_ << "] Stopped";
-    for (int i = 0; i < NCH; i++)
+    for (int i = 0; i < nCh_; i++)
         std::cout << " ch" << (i + 1) << "=" << processedFrames_[i].load();
     std::cout << std::endl;
 }
 
 void ConsumerModule::onStatus(msm::Message& response) {
-    for (int i = 0; i < NCH; i++) {
+    for (int i = 0; i < nCh_; i++) {
         response.data.set("ch" + std::to_string(i + 1) + "_frames",
                           std::to_string(processedFrames_[i].load()));
         response.data.set("ch" + std::to_string(i + 1) + "_batches",

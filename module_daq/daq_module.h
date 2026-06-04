@@ -7,9 +7,13 @@
 #include <atomic>
 #include <thread>
 #include <cstdint>
+#include <vector>
+#include <array>
 
 class DAQModule : public msm::Module {
 public:
+    static constexpr int MAX_CH = 16;
+
     DAQModule();
     ~DAQModule();
 
@@ -17,21 +21,28 @@ public:
     void handleState(const msm::Message& msg) override;
     msm::ModuleVars* getVars() override;
 
-    UserCircularBuffer* getRing(int channelIndex);
-    void loadConfig(const std::string& path);
+    UserCircularBuffer* getRing(int idx);
+    int getRingCount() const { return (int)rings_.size(); }
 
     struct Stats {
-        int64_t total_frames[4]{};
-        size_t overflow_count[4]{};
-        size_t frame_size[4]{};
+        std::vector<int64_t> total_frames;
+        std::vector<size_t> overflow_count;
+        std::vector<size_t> frame_size;
         bool is_running = false;
     };
     Stats getStats() const;
 
-    static constexpr int NCH = 4;
-    static constexpr int CHANNELS[4] = {1, 2, 3, 4};
+    void loadConfig(const std::string& path);
 
 private:
+    struct ChSlot {
+        void* cardHandle = nullptr;
+        int ch = 1;
+        UserCircularBuffer* ring = nullptr;
+        std::atomic<int64_t> totalFrames{0};
+        std::atomic<size_t> frameSize{0};
+    };
+
     void onConfigure(const msm::Json& data);
     bool onStart();
     void onStop();
@@ -40,19 +51,21 @@ private:
 
     void readerLoop();
     void cleanup();
+    void flushAll();
 
-    void* card_ = nullptr;
+    std::vector<void*> cards1073_;
     void* card3010_ = nullptr;
+    std::array<ChSlot, MAX_CH> activeChannels_;
+    int activeChCount_ = 0;
+    std::vector<UserCircularBuffer*> rings_;
+
     std::thread readerThread_;
     std::atomic<bool> readerRunning_{false};
-    bool init3010();
-    bool setTriggerOutput(bool enable);
 
-    UserCircularBuffer* rings_[NCH];
     DaqConfig config_;
 
-    std::atomic<int64_t> totalFrames_[NCH]{};
-    std::atomic<size_t> frameSize_[NCH]{};
+    bool init3010();
+    bool setTriggerOutput(bool enable);
 
     struct DAQVars : msm::ModuleVars {
         void* get(const std::string& name) override;

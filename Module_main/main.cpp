@@ -25,8 +25,8 @@ static void printStatus(const DAQModule& daq,
     DAQModule::Stats s = daq.getStats();
     std::cout << "\n=== Status ===\n";
     std::cout << "  DAQ running=" << s.is_running << "\n";
-    for (int i = 0; i < DAQModule::NCH; i++) {
-        std::cout << "  ch" << DAQModule::CHANNELS[i]
+    for (int i = 0; i < (int)s.total_frames.size(); i++) {
+        std::cout << "  ch" << (i + 1)
                   << ": frames=" << s.total_frames[i]
                   << " overflow=" << s.overflow_count[i]
                   << " frame_size=" << s.frame_size[i]
@@ -42,9 +42,13 @@ int main() {
 
     DAQModule daq;
     daq.loadConfig("config/app_inittial_config.json");
-    ConsumerModule consumer("Consumer",
-                            daq.getRing(0), daq.getRing(1),
-                            daq.getRing(2), daq.getRing(3));
+
+    // 收集 ring buffer 指针传给 ConsumerModule
+    std::vector<UserCircularBuffer*> allRings;
+    for (int i = 0; i < daq.getRingCount(); i++)
+        allRings.push_back(daq.getRing(i));
+
+    ConsumerModule consumer("Consumer", allRings);
     msm::IPCServer ipc("/tmp/msm_daq.sock");
 
     bus.registerModule(&daq);
@@ -55,14 +59,13 @@ int main() {
     consumer.start();
     ipc.start();
 
-    std::cout << "[main] Modules started. Sending Configure + Start in 1s...\n";
+    std::cout << "[main] Modules started. " << daq.getRingCount()
+              << " rings, " << allRings.size() << " consumer threads.\n";
     std::this_thread::sleep_for(std::chrono::seconds(1));
-
     send("Configure >> -@ DAQModule");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     send("Configure >> BatchSize=10000 -@ Consumer");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    // Consumer 先启动（等数据），再启动 DAQ（初始化+触发）
     send("Start >> -@ Consumer");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Start >> -@ DAQModule");
@@ -96,8 +99,8 @@ int main() {
                       << std::chrono::duration_cast<std::chrono::seconds>(
                              now - lastPrint).count()
                       << "s]";
-            for (int i = 0; i < DAQModule::NCH; i++)
-                std::cout << " ch" << DAQModule::CHANNELS[i]
+            for (int i = 0; i < (int)s.total_frames.size(); i++)
+                std::cout << " ch" << (i + 1)
                           << "=" << s.total_frames[i];
             std::cout << std::endl;
             lastPrint = now;
