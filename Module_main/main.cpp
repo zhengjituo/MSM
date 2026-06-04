@@ -70,7 +70,7 @@ int main() {
     std::cout << "[main] Modules started. Sending Configure + Start in 1s...\n";
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    send("Configure >> TrigLength=1024, VoltageRange=1000, TrigLevel=200 -@ DAQModule");
+    send("Configure >> TrigLength=128, VoltageRange=1000, TrigLevel=200 -@ DAQModule");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     send("Configure >> BatchSize=10000 -@ Consumer1");
     send("Configure >> BatchSize=10000 -@ Consumer2");
