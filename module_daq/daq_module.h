@@ -19,6 +19,7 @@ public:
 
     void stop() override;
     void handleState(const msm::Message& msg) override;
+    void onIdle() override;
     msm::ModuleVars* getVars() override;
 
     UserCircularBuffer* getRing(int idx);
@@ -49,8 +50,8 @@ private:
     void onReset();
     void onStatus(msm::Message& response);
 
-    void readerLoop();
-    void cleanup();
+    void doReadOnce();
+    void doCleanup();
     void flushAll();
 
     std::vector<void*> cards1073_;
@@ -59,8 +60,8 @@ private:
     int activeChCount_ = 0;
     std::vector<UserCircularBuffer*> rings_;
 
-    std::thread readerThread_;
-    std::atomic<bool> readerRunning_{false};
+    std::atomic<bool> acquiring_{false};
+    std::atomic<bool> emergencyStop_{false};
 
     DaqConfig config_;
 

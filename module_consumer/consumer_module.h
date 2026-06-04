@@ -18,6 +18,7 @@ public:
     ~ConsumerModule();
 
     void handleState(const msm::Message& msg) override;
+    void onIdle() override;
     msm::ModuleVars* getVars() override;
 
     virtual void onBatch(int channel, const uint8_t* data,
@@ -32,14 +33,14 @@ private:
     void onStop();
     void onStatus(msm::Message& response);
 
-    void consumerLoop(int chIdx, UserCircularBuffer* ring);
+    void doConsumeOnce();
 
     std::vector<UserCircularBuffer*> rings_;
     int nCh_ = 0;
-    std::array<std::thread, MAX_CH> consumerThreads_;
     std::array<std::atomic<int64_t>, MAX_CH> processedFrames_{};
     std::array<std::atomic<int64_t>, MAX_CH> processedBatches_{};
-    std::atomic<bool> running_{false};
+    std::atomic<bool> consuming_{false};
+    std::atomic<bool> emergencyStop_{false};
 
     size_t batchSize_ = 10000;
 

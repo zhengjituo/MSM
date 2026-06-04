@@ -39,6 +39,8 @@ public:
     }
     virtual void handleState(const Message& message) = 0;
     
+    virtual void onIdle() {}
+
 protected:
     std::string name_;
     std::atomic<bool> running_{false};
@@ -46,6 +48,8 @@ protected:
     std::unique_ptr<std::thread> thread_;
     std::queue<Message> queue_;
     std::mutex mtx_;
+
+    int idleDelayMs_ = 10;
     
     void runLoop();
 };

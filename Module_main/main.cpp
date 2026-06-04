@@ -60,7 +60,7 @@ int main() {
     ipc.start();
 
     std::cout << "[main] Modules started. " << daq.getRingCount()
-              << " rings, " << allRings.size() << " consumer threads.\n";
+              << " rings.\n";
     std::this_thread::sleep_for(std::chrono::seconds(1));
     send("Configure >> -@ DAQModule");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));

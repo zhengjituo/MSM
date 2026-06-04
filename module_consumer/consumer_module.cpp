@@ -19,6 +19,7 @@ ConsumerModule::ConsumerModule(const std::string& name,
             std::cerr << "[" << name_ << "] WARN: null ring[" << i << "]\n";
     }
     vars_.parent = this;
+    idleDelayMs_ = 10;
 }
 
 ConsumerModule::~ConsumerModule() {
@@ -39,8 +40,19 @@ int64_t ConsumerModule::getProcessedBatches(int ch) const {
     return processedBatches_[ch].load();
 }
 
+void ConsumerModule::onIdle() {
+    if (consuming_.load()) {
+        msm::Message consumeOnce("ConsumeOnce");
+        post(consumeOnce);
+    }
+}
+
 void ConsumerModule::handleState(const msm::Message& msg) {
-    if (msg.cmd == "Configure") {
+    if (msg.cmd == "ConsumeOnce") {
+        if (!emergencyStop_.load())
+            doConsumeOnce();
+
+    } else if (msg.cmd == "Configure") {
         onConfigure(msg.data);
     } else if (msg.cmd == "Start") {
         onStart();
@@ -62,25 +74,14 @@ void ConsumerModule::onConfigure(const msm::Json& data) {
 }
 
 void ConsumerModule::onStart() {
-    if (running_.load()) return;
-    running_ = true;
-    int started = 0;
-    for (int i = 0; i < nCh_; i++) {
-        if (rings_[i]) {
-            consumerThreads_[i] = std::thread(&ConsumerModule::consumerLoop, this, i, rings_[i]);
-            started++;
-        }
-    }
-    std::cout << "[" << name_ << "] " << started << " consumer thread(s) started\n";
+    emergencyStop_ = false;
+    consuming_ = true;
+    std::cout << "[" << name_ << "] Consuming (message-driven)\n";
 }
 
 void ConsumerModule::onStop() {
-    if (!running_.load()) return;
-    running_ = false;
-    for (int i = 0; i < nCh_; i++) {
-        if (consumerThreads_[i].joinable())
-            consumerThreads_[i].join();
-    }
+    consuming_ = false;
+    emergencyStop_ = true;
     std::cout << "[" << name_ << "] Stopped";
     for (int i = 0; i < nCh_; i++)
         std::cout << " ch" << (i + 1) << "=" << processedFrames_[i].load();
@@ -96,27 +97,35 @@ void ConsumerModule::onStatus(msm::Message& response) {
     }
 }
 
-void ConsumerModule::consumerLoop(int chIdx, UserCircularBuffer* ring) {
-    size_t batch = batchSize_;
+void ConsumerModule::doConsumeOnce() {
+    if (emergencyStop_.load()) return;
 
-    while (running_.load()) {
-        while (running_.load()) {
-            if (ring->availableFrames() >= batch) break;
-            std::this_thread::yield();
-        }
-        if (!running_.load()) break;
+    bool any = false;
+    for (int i = 0; i < nCh_; i++) {
+        if (emergencyStop_.load()) return;
+        if (!rings_[i]) continue;
 
-        size_t flen = ring->getExpectedPacketSize();
-        size_t needed = batch * flen;
+        size_t avail = rings_[i]->availableFrames();
+        if (avail < batchSize_) continue;
+
+        size_t flen = rings_[i]->getExpectedPacketSize();
+        size_t needed = batchSize_ * flen;
         std::vector<uint8_t> buf(needed);
-        size_t got = ring->readData(buf.data(), needed);
+        size_t got = rings_[i]->readData(buf.data(), needed);
         if (got != needed) continue;
 
         if (buf[0] != 0xEB || buf[1] != 0x91) continue;
 
-        onBatch(chIdx, buf.data(), batch, flen);
-        processedFrames_[chIdx].fetch_add(batch);
-        processedBatches_[chIdx].fetch_add(1);
+        onBatch(i, buf.data(), batchSize_, flen);
+        processedFrames_[i].fetch_add(batchSize_);
+        processedBatches_[i].fetch_add(1);
+        any = true;
+    }
+    if (any) {
+        std::cout << "[" << name_ << "]";
+        for (int i = 0; i < nCh_; i++)
+            std::cout << " ch" << (i + 1) << "=" << processedFrames_[i].load();
+        std::cout << std::endl;
     }
 }
 
@@ -132,11 +141,7 @@ void ConsumerModule::onBatch(int channel, const uint8_t* data,
               ((uint64_t)t[6] << 8)  | (uint64_t)t[7];
     }
 
-    std::cout << "[" << name_ << "] ch" << (channel + 1)
-              << " batch=" << processedBatches_[channel].load() + 1
-              << " frames=" << frameCount
-              << " TrigID=" << tid
-              << " BunchID=" << bid << std::endl;
+    // onBatch print suppressed — summary in doConsumeOnce
 }
 
 // ── ConsumerVars ────────────────────────────────────────────────

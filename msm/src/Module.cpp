@@ -43,12 +43,10 @@ void Module::runLoop() {
         }
         
         if (!msg.cmd.empty()) {
-            // 队列有消息则处理
             handleState(msg);
         } else {
-            // 队列无消息则处理空消息帧（IDLE）
-            handleState(Message{});
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            onIdle();
+            std::this_thread::sleep_for(std::chrono::milliseconds(idleDelayMs_));
         }
     }
     running_ = false;

@@ -15,6 +15,7 @@ DAQModule::DAQModule()
     : Module("DAQModule")
 {
     vars_.parent = this;
+    idleDelayMs_ = 10;
 }
 
 DAQModule::~DAQModule() {
@@ -34,7 +35,7 @@ UserCircularBuffer* DAQModule::getRing(int idx) {
 
 DAQModule::Stats DAQModule::getStats() const {
     Stats s;
-    s.is_running = readerRunning_.load();
+    s.is_running = acquiring_.load();
     for (int i = 0; i < activeChCount_; i++) {
         const auto& slot = activeChannels_[i];
         s.total_frames.push_back(slot.totalFrames.load());
@@ -44,8 +45,19 @@ DAQModule::Stats DAQModule::getStats() const {
     return s;
 }
 
+void DAQModule::onIdle() {
+    if (acquiring_.load() && !emergencyStop_.load()) {
+        msm::Message readOnce("ReadOnce");
+        post(readOnce);
+    }
+}
+
 void DAQModule::handleState(const msm::Message& msg) {
-    if (msg.cmd == "Configure") {
+    if (msg.cmd == "ReadOnce") {
+        if (!emergencyStop_.load())
+            doReadOnce();
+
+    } else if (msg.cmd == "Configure") {
         onConfigure(msg.data);
     } else if (msg.cmd == "Start") {
         bool started = onStart();
@@ -136,7 +148,7 @@ void DAQModule::onConfigure(const msm::Json& data) {
 }
 
 bool DAQModule::onStart() {
-    if (readerRunning_.load()) {
+    if (acquiring_.load()) {
         std::cerr << "[DAQModule] Already running\n";
         return false;
     }
@@ -247,12 +259,7 @@ bool DAQModule::onStart() {
     std::cout << "[DAQModule] Settling 1073 (2s)...\n";
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    // ── 启动 reader ─────────────────────────────────────────
-    readerRunning_ = true;
-    readerThread_ = std::thread(&DAQModule::readerLoop, this);
-    std::cout << "[DAQModule] Reader thread started (" << activeChCount_ << " ch)\n";
-
-    // ── 3010 trigger on ────────────────────────────────────
+    // ── 3010 trigger on + 标记采集 ─────────────────────────
     if (card3010_) {
         if (init3010()) {
             setTriggerOutput(true);
@@ -261,16 +268,23 @@ bool DAQModule::onStart() {
     } else {
         std::cout << "[DAQModule] No 3010 card, trigger not started\n";
     }
+
+    emergencyStop_ = false;
+    acquiring_ = true;
+    std::cout << "[DAQModule] Acquiring (message-driven)\n";
     return true;
 }
 
 void DAQModule::stop() {
-    if (readerRunning_.load() || card3010_ || !cards1073_.empty())
-        onStop();
+    onStop();
     Module::stop();
 }
 
 void DAQModule::onStop() {
+    if (!acquiring_.exchange(false) && !emergencyStop_.load())
+        return;
+    emergencyStop_ = true;
+
     if (card3010_) {
         setTriggerOutput(false);
         std::cout << "[DAQModule] 3010 trigger off, waiting 200ms...\n";
@@ -285,11 +299,7 @@ void DAQModule::onStop() {
         std::cout << "[DAQModule] 3010 closed\n";
     }
 
-    readerRunning_ = false;
-    if (readerThread_.joinable())
-        readerThread_.join();
-
-    cleanup();
+    doCleanup();
     std::cout << "[DAQModule] Stopped\n";
 }
 
@@ -315,48 +325,40 @@ void DAQModule::onStatus(msm::Message& response) {
     response.data.set("running", s.is_running ? "true" : "false");
 }
 
-void DAQModule::readerLoop() {
-    std::vector<uint8_t> buf(4U * 1024U * 1024U);
+void DAQModule::doReadOnce() {
+    if (emergencyStop_.load() || activeChCount_ == 0) return;
 
-    while (readerRunning_.load()) {
-        bool any_data = false;
-        for (int i = 0; i < activeChCount_; i++) {
-            auto& slot = activeChannels_[i];
-            void* frames = nullptr;
-            uint32_t n = 0;
-            CxDeviceReadChannelFrames(slot.cardHandle, slot.ch, &frames, &n);
-            if (n == 0) continue;
+    for (int i = 0; i < activeChCount_; i++) {
+        if (emergencyStop_.load()) return;
 
-            any_data = true;
+        auto& slot = activeChannels_[i];
+        void* frames = nullptr;
+        uint32_t n = 0;
+        CxDeviceReadChannelFrames(slot.cardHandle, slot.ch, &frames, &n);
+        if (n == 0) continue;
 
-            auto* rp = static_cast<RawPack*>(frames);
-            size_t flen = rp[0].BufferSize;
-            if (flen == 0) continue;
-            size_t bytes = (size_t)n * flen;
+        auto* rp = static_cast<RawPack*>(frames);
+        size_t flen = rp[0].BufferSize;
+        if (flen == 0) continue;
+        size_t bytes = (size_t)n * flen;
 
-            if (bytes > buf.size())
-                buf.resize(bytes);
-            uint8_t* dst = buf.data();
-            for (uint32_t j = 0; j < n; j++) {
-                if (!rp[j].Buffer) { bytes = 0; break; }
-                std::memcpy(dst, rp[j].Buffer, flen);
-                dst += flen;
-            }
-            if (bytes == 0) continue;
-
-            slot.frameSize.store(flen);
-            slot.ring->setExpectedPacketSize(flen);
-            size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
-            int64_t total = slot.totalFrames.fetch_add(written / flen) + (int64_t)(written / flen);
-
-            std::cout << "[reader] ch" << slot.ch << " id=" << i
-                      << " n=" << n
-                      << " flen=" << flen
-                      << " written=" << (written / flen)
-                      << " total=" << total << std::endl;
+        thread_local std::vector<uint8_t> buf;
+        if (bytes > buf.size())
+            buf.resize(bytes);
+        uint8_t* dst = buf.data();
+        for (uint32_t j = 0; j < n; j++) {
+            if (!rp[j].Buffer) { bytes = 0; break; }
+            std::memcpy(dst, rp[j].Buffer, flen);
+            dst += flen;
         }
-        if (!any_data)
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (bytes == 0) continue;
+
+        slot.frameSize.store(flen);
+        slot.ring->setExpectedPacketSize(flen);
+        size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
+        int64_t total = slot.totalFrames.fetch_add(written / flen) + (int64_t)(written / flen);
+
+        // [reader] print suppressed — see consumer onBatch for progress
     }
 }
 
@@ -388,9 +390,11 @@ void DAQModule::flushAll() {
         slot.ring->setExpectedPacketSize(flen);
         size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
         slot.totalFrames.fetch_add(written / flen);
+        size_t ovf = slot.ring->getOverflowCount();
         std::cout << "[flush] ch" << slot.ch << " id=" << i
                   << " n=" << n << " flen=" << flen
-                  << " written=" << (written / flen) << std::endl;
+                  << " written=" << (written / flen)
+                  << " ovf=" << ovf << std::endl;
     }
 }
 
@@ -419,11 +423,12 @@ bool DAQModule::setTriggerOutput(bool enable) {
     return true;
 }
 
-void DAQModule::cleanup() {
+void DAQModule::doCleanup() {
     if (cards1073_.empty()) return;
 
     for (int i = 0; i < activeChCount_; i++) {
         auto& slot = activeChannels_[i];
+        if (emergencyStop_.load()) break;
         CxDeviceStopChannelRecv(slot.cardHandle, slot.ch);
         CxDeviceSetChannel(slot.cardHandle, slot.ch, "stop");
     }
