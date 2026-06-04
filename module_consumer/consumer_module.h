@@ -7,19 +7,27 @@
 #include <thread>
 #include <cstdint>
 #include <vector>
+#include <array>
 
 class ConsumerModule : public msm::Module {
 public:
-    ConsumerModule(const std::string& name, UserCircularBuffer* ring);
+    static constexpr int NCH = 4;
+
+    ConsumerModule(const std::string& name,
+                   UserCircularBuffer* ring0,
+                   UserCircularBuffer* ring1,
+                   UserCircularBuffer* ring2,
+                   UserCircularBuffer* ring3);
     ~ConsumerModule();
 
     void handleState(const msm::Message& msg) override;
     msm::ModuleVars* getVars() override;
 
-    virtual void onBatch(const uint8_t* data, size_t frameCount, size_t frameSize);
+    virtual void onBatch(int channel, const uint8_t* data,
+                         size_t frameCount, size_t frameSize);
 
-    int64_t getProcessedFrames() const;
-    int64_t getProcessedBatches() const;
+    int64_t getProcessedFrames(int ch) const;
+    int64_t getProcessedBatches(int ch) const;
 
 private:
     void onConfigure(const msm::Json& data);
@@ -27,13 +35,13 @@ private:
     void onStop();
     void onStatus(msm::Message& response);
 
-    void consumerLoop();
+    void consumerLoop(int ch, UserCircularBuffer* ring);
 
-    UserCircularBuffer* ring_;
-    std::thread consumerThread_;
+    UserCircularBuffer* rings_[NCH];
+    std::thread consumerThreads_[NCH];
     std::atomic<bool> running_{false};
-    std::atomic<int64_t> processedFrames_{0};
-    std::atomic<int64_t> processedBatches_{0};
+    std::atomic<int64_t> processedFrames_[NCH]{};
+    std::atomic<int64_t> processedBatches_[NCH]{};
 
     size_t batchSize_ = 10000;
 
