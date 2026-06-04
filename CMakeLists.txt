@@ -11,9 +11,9 @@ set(MSM_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/msm/include)
 add_subdirectory(msm)
 
 add_library(user_circular_buffer STATIC
-    user_circular_buffer.cpp
+    extern/circular_buffer/user_circular_buffer.cpp
 )
-target_include_directories(user_circular_buffer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(user_circular_buffer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/extern/circular_buffer)
 
 add_library(daq_module STATIC
     module_daq/daq_module.cpp
