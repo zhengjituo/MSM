@@ -12,6 +12,7 @@ public:
     DAQModule();
     ~DAQModule();
 
+    void stop() override;
     void handleState(const msm::Message& msg) override;
     msm::ModuleVars* getVars() override;
 

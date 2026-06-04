@@ -169,14 +169,19 @@ bool DAQModule::onStart() {
     return true;
 }
 
-void DAQModule::onStop() {
-    if (!readerRunning_.load()) return;
+void DAQModule::stop() {
+    // 确保硬件释放，不依赖消息队列中的 "Stop" 消息
+    if (readerRunning_.load() || card_ || card3010_)
+        onStop();
+    Module::stop();
+}
 
-    // Stop triggers first
+void DAQModule::onStop() {
     if (card3010_) {
         setTriggerOutput(false);
         CxDeviceSetCard(card3010_, "close");
-        std::cout << "[DAQModule] 3010 trigger disabled\n";
+        card3010_ = nullptr;
+        std::cout << "[DAQModule] 3010 disabled\n";
     }
 
     readerRunning_ = false;
@@ -210,9 +215,9 @@ void DAQModule::onStatus(msm::Message& response) {
 
 void DAQModule::readerLoop() {
     std::vector<uint8_t> buf(4U * 1024U * 1024U);
-    int idle_count = 0;
 
     while (readerRunning_.load()) {
+        bool any_data = false;
         for (int i = 0; i < NCH; i++) {
             int ch = CHANNELS[i];
             void* frames = nullptr;
@@ -220,7 +225,7 @@ void DAQModule::readerLoop() {
             CxDeviceReadChannelFrames(card_, ch, &frames, &n);
             if (n == 0) continue;
 
-            idle_count = 0;
+            any_data = true;
 
             auto* rp = static_cast<RawPack*>(frames);
             size_t flen = rp[0].BufferSize;
@@ -246,12 +251,8 @@ void DAQModule::readerLoop() {
                       << " written=" << (written / flen)
                       << " total=" << total << std::endl;
         }
-        idle_count++;
-        if (idle_count == 100) {
-            std::cout << "[reader] No data after 100 iterations\n";
-        } else if (idle_count == 1000) {
-            std::cout << "[reader] No data after 1000 iterations\n";
-        }
+        if (!any_data)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
 
