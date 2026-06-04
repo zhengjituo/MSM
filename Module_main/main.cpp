@@ -61,8 +61,10 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     send("Configure >> BatchSize=10000 -@ Consumer");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    send("Start >> -@ DAQModule");
+    // Consumer 先启动（等数据），再启动 DAQ（初始化+触发）
     send("Start >> -@ Consumer");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    send("Start >> -@ DAQModule");
 
     std::cout << "[main] Commands sent. Type NI commands or 'quit'/'status':\n";
 

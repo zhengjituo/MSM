@@ -36,6 +36,7 @@ private:
     void onStatus(msm::Message& response);
 
     void readerLoop();
+    bool waitChannelsReady();
     void cleanup();
 
     void* card_ = nullptr;
