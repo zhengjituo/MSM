@@ -118,7 +118,10 @@ bool DaqConfig::loadFromJson(const std::string& path) {
     }
     std::stringstream ss;
     ss << f.rdbuf();
-    std::string json = ss.str();
+    return loadFromJsonString(ss.str());
+}
+
+bool DaqConfig::loadFromJsonString(const std::string& json) {
 
     // --- app_config ---
     std::string app = findBrace(json, "app_config");
@@ -210,7 +213,7 @@ bool DaqConfig::loadFromJson(const std::string& path) {
         cards.push_back(card);
     }
 
-    std::cout << "[DaqConfig] loaded " << cards.size() << " card(s) from " << path << "\n";
+    std::cout << "[DaqConfig] loaded " << cards.size() << " card(s)\n";
     for (const auto& c : cards) {
         std::cout << "  Card#" << c.card_index << " type=" << c.card_type
                   << " slot=" << c.slot
@@ -245,4 +248,155 @@ ChannelConfig* DaqConfig::getChannel(int card_index, int channel) {
     for (auto& ch : cards[ci].channels)
         if (ch.channel == channel) return &ch;
     return nullptr;
+}
+
+bool DaqConfig::saveToJson(const std::string& path) const {
+    std::ofstream f(path);
+    if (!f.is_open()) {
+        std::cerr << "[DaqConfig] Cannot write " << path << "\n";
+        return false;
+    }
+
+    f << "{\n";
+    f << "    \"DaqParameter\": {\n";
+    f << "        \"ChassisNo\": " << chassis_no << ",\n";
+    f << "        \"Cards\": {\n";
+
+    for (size_t ci = 0; ci < cards.size(); ci++) {
+        const auto& card = cards[ci];
+        f << "            \"Card#" << card.card_index << "\": {\n";
+        f << "                \"CardIndex\": " << card.card_index << ",\n";
+        f << "                \"CardType\": \"" << card.card_type << "\",\n";
+        f << "                \"Slot\": " << card.slot << ",\n";
+
+        if (!card.channels.empty()) {
+            f << "                \"Channels\": {\n";
+            for (size_t chi = 0; chi < card.channels.size(); chi++) {
+                const auto& ch = card.channels[chi];
+                f << "                    \"Channel#" << ch.channel << "\": {\n";
+                f << "                        \"B1st\": \"" << ch.b1st << "\",\n";
+                f << "                        \"DeadTime\": \"" << ch.dead_time << "\",\n";
+                f << "                        \"ExternalTrigPolarity\": \"" << ch.external_trig_polarity << "\",\n";
+                f << "                        \"FiniteTrigNum\": \"" << ch.finite_trig_num << "\",\n";
+                f << "                        \"IpGlobalRST\": \"" << ch.ip_global_rst << "\",\n";
+                f << "                        \"IpLogicRST\": \"" << ch.ip_logic_rst << "\",\n";
+                f << "                        \"K\": \"" << ch.k << "\",\n";
+                f << "                        \"K1st\": \"" << ch.k1st << "\",\n";
+                f << "                        \"Kx\": \"" << ch.kx << "\",\n";
+                f << "                        \"Ky\": \"" << ch.ky << "\",\n";
+                f << "                        \"OffsetX\": \"" << ch.offset_x << "\",\n";
+                f << "                        \"OffsetY\": \"" << ch.offset_y << "\",\n";
+                f << "                        \"TrigDelayTime\": \"" << ch.trig_delay_time << "\",\n";
+                f << "                        \"TrigLength\": \"" << ch.trig_length << "\",\n";
+                f << "                        \"TrigLevel\": \"" << ch.trig_level << "\",\n";
+                f << "                        \"TrigMode\": \"" << ch.trig_mode << "\",\n";
+                f << "                        \"TrigPolarity\": \"" << ch.trig_polarity << "\",\n";
+                f << "                        \"TrigPosition\": \"" << ch.trig_position << "\",\n";
+                f << "                        \"TrigPulseWidth\": \"" << ch.trig_pulse_width << "\",\n";
+                f << "                        \"TrigSource\": \"" << ch.trig_source << "\",\n";
+                f << "                        \"TrigWindowStart\": \"" << ch.trig_window_start << "\",\n";
+                f << "                        \"ValueThresholdHigh\": \"" << ch.value_threshold_high << "\",\n";
+                f << "                        \"ValueThresholdLow\": \"" << ch.value_threshold_low << "\",\n";
+                f << "                        \"VoltageOffset\": \"" << ch.voltage_offset << "\",\n";
+                f << "                        \"VoltageRange\": \"" << ch.voltage_range << "\",\n";
+                f << "                        \"WaveDataEnable\": \"" << ch.wave_data_enable << "\",\n";
+                f << "                        \"WorkMode\": \"" << ch.work_mode << "\",\n";
+                f << "                        \"cardIndex\": " << ch.cardIndex << ",\n";
+                f << "                        \"channel\": " << ch.channel << ",\n";
+                f << "                        \"runEnable\": " << (ch.runEnable ? "true" : "false") << ",\n";
+                f << "                        \"slot\": " << ch.slot << "\n";
+                f << "                    }";
+                if (chi < card.channels.size() - 1) f << ",";
+                f << "\n";
+            }
+            f << "                }\n";
+        } else {
+            f << "                \"Channels\": null\n";
+        }
+        f << "            }";
+        if (ci < cards.size() - 1) f << ",";
+        f << "\n";
+    }
+
+    f << "        }\n";
+    f << "    },\n";
+    f << "    \"app_config\": {\n";
+    f << "        \"autoAcqInEpicsWhenSoftwareStarts\": " << (auto_acq_on_start ? "true" : "false") << ",\n";
+    f << "        \"dataSavePath\": \"" << data_save_path << "\",\n";
+    f << "        \"fileName\": \"" << file_name << "\",\n";
+    f << "        \"fileType\": \"" << file_type << "\",\n";
+    f << "        \"isEpicsControlMode\": " << (epics_control_mode ? "true" : "false") << ",\n";
+    f << "        \"maxSaveSizeMB\": " << max_save_size_mb << ",\n";
+    f << "        \"pvInfoUpdateFreHz\": " << pv_info_freq_hz << ",\n";
+    f << "        \"runId\": " << run_id << ",\n";
+    f << "        \"startStorage\": " << (start_storage ? "true" : "false") << "\n";
+    f << "    }\n";
+    f << "}\n";
+
+    std::cout << "[DaqConfig] saved to " << path << "\n";
+    return true;
+}
+
+std::map<std::string, std::string> DaqConfig::toKeyValues() const {
+    std::map<std::string, std::string> kv;
+
+    // 全局参数
+    kv["ChassisNo"] = std::to_string(chassis_no);
+    kv["CardCount"] = std::to_string(cards.size());
+
+    // 逐卡、逐通道
+    for (size_t ci = 0; ci < cards.size(); ci++) {
+        const auto& card = cards[ci];
+        std::string prefix = "Card_" + std::to_string(ci + 1) + "_";
+
+        kv[prefix + "Index"] = std::to_string(card.card_index);
+        kv[prefix + "Type"] = card.card_type;
+        kv[prefix + "Slot"] = std::to_string(card.slot);
+        kv[prefix + "ChCount"] = std::to_string(card.channels.size());
+
+        for (size_t chi = 0; chi < card.channels.size(); chi++) {
+            const auto& ch = card.channels[chi];
+            std::string chPrefix = prefix + "Ch_" + std::to_string(chi + 1) + "_";
+
+            kv[chPrefix + "Enable"] = ch.runEnable ? "1" : "0";
+            kv[chPrefix + "Channel"] = std::to_string(ch.channel);
+            kv[chPrefix + "CardIndex"] = std::to_string(ch.cardIndex);
+            kv[chPrefix + "Slot"] = std::to_string(ch.slot);
+
+            kv[chPrefix + "TrigSource"] = ch.trig_source;
+            kv[chPrefix + "TrigMode"] = ch.trig_mode;
+            kv[chPrefix + "TrigLength"] = ch.trig_length;
+            kv[chPrefix + "TrigLevel"] = ch.trig_level;
+            kv[chPrefix + "TrigPulseWidth"] = ch.trig_pulse_width;
+            kv[chPrefix + "TrigPolarity"] = ch.trig_polarity;
+            kv[chPrefix + "TrigDelayTime"] = ch.trig_delay_time;
+            kv[chPrefix + "TrigPosition"] = ch.trig_position;
+            kv[chPrefix + "TrigWindowStart"] = ch.trig_window_start;
+
+            kv[chPrefix + "VoltageRange"] = ch.voltage_range;
+            kv[chPrefix + "VoltageOffset"] = ch.voltage_offset;
+
+            kv[chPrefix + "DeadTime"] = ch.dead_time;
+            kv[chPrefix + "FiniteTrigNum"] = ch.finite_trig_num;
+            kv[chPrefix + "WaveDataEnable"] = ch.wave_data_enable;
+            kv[chPrefix + "WorkMode"] = ch.work_mode;
+
+            kv[chPrefix + "K"] = ch.k;
+            kv[chPrefix + "K1st"] = ch.k1st;
+            kv[chPrefix + "Kx"] = ch.kx;
+            kv[chPrefix + "Ky"] = ch.ky;
+            kv[chPrefix + "OffsetX"] = ch.offset_x;
+            kv[chPrefix + "OffsetY"] = ch.offset_y;
+            kv[chPrefix + "B1st"] = ch.b1st;
+
+            kv[chPrefix + "ValueThresholdHigh"] = ch.value_threshold_high;
+            kv[chPrefix + "ValueThresholdLow"] = ch.value_threshold_low;
+            kv[chPrefix + "ExternalTrigPolarity"] = ch.external_trig_polarity;
+
+            kv[chPrefix + "IpGlobalRST"] = ch.ip_global_rst;
+            kv[chPrefix + "IpLogicRST"] = ch.ip_logic_rst;
+        }
+    }
+
+    return kv;
 }

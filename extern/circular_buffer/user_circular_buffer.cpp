@@ -82,6 +82,28 @@ size_t UserCircularBuffer::readData(void* dest, size_t size) {
     return (size_t)to_read;
 }
 
+size_t UserCircularBuffer::peekData(void* dest, size_t size) const {
+    if (!dest || size == 0) return 0;
+    if (align_capacity_ == 0) return 0;
+
+    uint64_t cur_read  = read_total_.load(std::memory_order_relaxed);
+    uint64_t cur_write = write_total_.load(std::memory_order_acquire);
+
+    uint64_t avail = cur_write - cur_read;
+    if (avail == 0) return 0;
+
+    uint64_t to_read = std::min((uint64_t)size, avail);
+    uint8_t* dst = static_cast<uint8_t*>(dest);
+
+    size_t offset = cur_read % align_capacity_;
+    size_t first = std::min((size_t)to_read, align_capacity_ - offset);
+    std::memcpy(dst, buffer_ + offset, first);
+    if (first < to_read)
+        std::memcpy(dst + first, buffer_, (size_t)(to_read - first));
+
+    return (size_t)to_read;
+}
+
 size_t UserCircularBuffer::availableDataSize() const {
     uint64_t w = write_total_.load(std::memory_order_acquire);
     uint64_t r = read_total_.load(std::memory_order_acquire);

@@ -1,23 +1,20 @@
-#ifndef MSM_DAQ_DAQ_MODULE_H
-#define MSM_DAQ_DAQ_MODULE_H
+#ifndef MSM_DAQ_MODULE_SIM_H
+#define MSM_DAQ_MODULE_SIM_H
 
 #include "Module.h"
 #include "user_circular_buffer.h"
-#include "daq_config.h"
 #include <atomic>
-#include <thread>
 #include <cstdint>
 #include <vector>
 #include <array>
 
-class DAQModule : public msm::Module {
+class ModuleSim : public msm::Module {
 public:
     static constexpr int MAX_CH = 16;
 
-    DAQModule();
-    ~DAQModule();
+    ModuleSim();
+    ~ModuleSim();
 
-    void stop() override;
     void handleState(const msm::Message& msg) override;
     void onIdle() override;
     msm::ModuleVars* getVars() override;
@@ -33,46 +30,39 @@ public:
     };
     Stats getStats() const;
 
-    void loadConfig(const std::string& path);
-
 private:
-    struct ChSlot {
-        void* cardHandle = nullptr;
-        int ch = 1;
-        UserCircularBuffer* ring = nullptr;
-        std::atomic<int64_t> totalFrames{0};
-        std::atomic<size_t> frameSize{0};
-    };
-
     void onConfigure(const msm::Json& data);
-    bool onStart();
+    void onStart();
     void onStop();
     void onReset();
     void onStatus(msm::Message& response);
 
-    void doReadOnce();
-    void doCleanup();
-    void flushAll();
+    void doGenerateOnce();
+    void buildFrame(uint8_t* buf, size_t frameSize, int ch,
+                    uint64_t trigId, uint64_t bunchId);
 
-    std::vector<void*> cards1073_;
-    void* card3010_ = nullptr;
-    std::array<ChSlot, MAX_CH> activeChannels_;
-    int activeChCount_ = 0;
     std::vector<UserCircularBuffer*> rings_;
+    int nCh_ = 0;
+    size_t trigLength_ = 1024;
+    size_t frameSize_ = 0;
+    size_t framesPerCycle_ = 2000;
+    size_t triggerRateHz_ = 100000;
+    size_t bunchInc_ = 10;  // 1,000,000 / triggerRateHz_
 
-    std::atomic<bool> acquiring_{false};
+    std::array<std::atomic<int64_t>, MAX_CH> totalFrames_{};
+    uint64_t nextTrigId_ = 1;
+    uint64_t nextBunchId_ = 1;
+
+    std::atomic<bool> generating_{false};
     std::atomic<bool> emergencyStop_{false};
 
-    DaqConfig config_;
+    std::vector<uint8_t> frameBuf_;
 
-    bool init3010();
-    bool setTriggerOutput(bool enable);
-
-    struct DAQVars : msm::ModuleVars {
+    struct SimVars : msm::ModuleVars {
         void* get(const std::string& name) override;
         bool set(const std::string& name, const std::string& value) override;
         std::map<std::string, std::string> list() override;
-        DAQModule* parent = nullptr;
+        ModuleSim* parent = nullptr;
     } vars_;
 };
 

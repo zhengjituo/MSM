@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <cstdint>
 #include <cstddef>
 
@@ -94,6 +95,9 @@ struct DaqConfig {
     bool start_storage = false;
 
     bool loadFromJson(const std::string& path);
+    bool loadFromJsonString(const std::string& json);
+    bool saveToJson(const std::string& path) const;
+    std::map<std::string, std::string> toKeyValues() const;
 
     // 查找指定类型板卡的索引（相对于 cards 数组）
     int findCardByType(const std::string& card_type) const;

@@ -12,6 +12,7 @@ public:
 
     size_t writeFromDevice(const void* data, size_t size);
     size_t readData(void* dest, size_t size);
+    size_t peekData(void* dest, size_t size) const;
     size_t availableDataSize() const;
     size_t availableFrames() const;
     size_t availableSpace() const;

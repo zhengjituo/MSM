@@ -1,4 +1,4 @@
-#include "daq_module.h"
+#include "module_daq.h"
 #include "MessageBus.h"
 #include "CxDeviceCore.h"
 #include "CxDeviceInternal.h"
@@ -11,29 +11,29 @@
 #include <algorithm>
 
 
-DAQModule::DAQModule()
+ModuleDAQ::ModuleDAQ()
     : Module("DAQModule")
 {
     vars_.parent = this;
     idleDelayMs_ = 10;
 }
 
-DAQModule::~DAQModule() {
+ModuleDAQ::~ModuleDAQ() {
     stop();
     for (auto* r : rings_) delete r;
     rings_.clear();
 }
 
-msm::ModuleVars* DAQModule::getVars() {
+msm::ModuleVars* ModuleDAQ::getVars() {
     return &vars_;
 }
 
-UserCircularBuffer* DAQModule::getRing(int idx) {
+UserCircularBuffer* ModuleDAQ::getRing(int idx) {
     if (idx < 0 || idx >= (int)rings_.size()) return nullptr;
     return rings_[idx];
 }
 
-DAQModule::Stats DAQModule::getStats() const {
+ModuleDAQ::Stats ModuleDAQ::getStats() const {
     Stats s;
     s.is_running = acquiring_.load();
     for (int i = 0; i < activeChCount_; i++) {
@@ -45,14 +45,14 @@ DAQModule::Stats DAQModule::getStats() const {
     return s;
 }
 
-void DAQModule::onIdle() {
+void ModuleDAQ::onIdle() {
     if (acquiring_.load() && !emergencyStop_.load()) {
         msm::Message readOnce("ReadOnce");
         post(readOnce);
     }
 }
 
-void DAQModule::handleState(const msm::Message& msg) {
+void ModuleDAQ::handleState(const msm::Message& msg) {
     if (msg.cmd == "ReadOnce") {
         if (!emergencyStop_.load())
             doReadOnce();
@@ -82,79 +82,115 @@ void DAQModule::handleState(const msm::Message& msg) {
     }
 }
 
-void DAQModule::loadConfig(const std::string& path) {
-    if (!config_.loadFromJson(path)) {
-        std::cerr << "[DAQModule] Failed to load config from " << path << "\n";
-        return;
-    }
+void ModuleDAQ::onConfigure(const msm::Json& data) {
+    // 遍历 data map，按前缀拆解到 card/channel
+    bool needRingCreate = false;
 
-    int totalCh = 0;
-    for (const auto& cardCfg : config_.cards) {
-        if (cardCfg.card_type != "1073") continue;
-        for (const auto& chCfg : cardCfg.channels)
-            if (chCfg.runEnable) totalCh++;
-    }
+    for (auto it = data.data.begin(); it != data.data.end(); ++it) {
+        const std::string& key = it->first;
+        const std::string& val = it->second;
+        // Card_X_Type / Card_X_Slot / Card_X_ChCount
+        if (key.find("Card_") == 0) {
+            size_t p1 = key.find('_', 5);
+            if (p1 == std::string::npos) continue;
+            int cardIdx = std::stoi(key.substr(5, p1 - 5));
+            std::string rest = key.substr(p1 + 1);
 
-    if (totalCh > MAX_CH) {
-        std::cerr << "[DAQModule] WARN: " << totalCh << " channels > MAX_CH="
-                  << MAX_CH << ", truncating\n";
-        totalCh = MAX_CH;
-    }
+            if (rest == "ChCount") {
+                // Card count changed, need to rebuild config structure
+                int newCount = std::stoi(val);
+                while ((int)config_.cards.size() < cardIdx) {
+                    config_.cards.push_back(CardConfig());
+                }
+                config_.cards[cardIdx - 1].channels.resize(std::stoi(val));
+                needRingCreate = true;
+                continue;
+            }
 
-    for (int i = 0; i < totalCh; i++)
-        rings_.push_back(new UserCircularBuffer(256U * 1024U * 1024U, 384));
+            // Card_X_Field
+            int ci = cardIdx - 1;
+            if (ci < 0 || ci >= (int)config_.cards.size()) continue;
+            auto& card = config_.cards[ci];
 
-    std::cout << "[DAQModule] Config loaded: " << totalCh << " ring(s) created\n";
-}
+            if (rest == "Index") { card.card_index = std::stoi(val); continue; }
+            if (rest == "Type")  { card.card_type = val; needRingCreate = true; continue; }
+            if (rest == "Slot")  { card.slot = std::stoi(val); continue; }
 
-void DAQModule::onConfigure(const msm::Json& data) {
-    for (auto& cardCfg : config_.cards) {
-        if (cardCfg.card_type != "1073") continue;
-        for (auto& ch : cardCfg.channels) {
-            if (!ch.runEnable) continue;
-            if (data.contains("TrigLength"))
-                ch.trig_length = data.get("TrigLength");
-            if (data.contains("VoltageRange"))
-                ch.voltage_range = data.get("VoltageRange");
-            if (data.contains("TrigLevel"))
-                ch.trig_level = data.get("TrigLevel");
-            if (data.contains("TrigSource"))
-                ch.trig_source = data.get("TrigSource");
-            if (data.contains("TrigMode"))
-                ch.trig_mode = data.get("TrigMode");
-            if (data.contains("TrigPulseWidth"))
-                ch.trig_pulse_width = data.get("TrigPulseWidth");
-            if (data.contains("TrigPolarity"))
-                ch.trig_polarity = data.get("TrigPolarity");
-            if (data.contains("TrigDelayTime"))
-                ch.trig_delay_time = data.get("TrigDelayTime");
-            if (data.contains("TrigPosition"))
-                ch.trig_position = data.get("TrigPosition");
-            if (data.contains("VoltageOffset"))
-                ch.voltage_offset = data.get("VoltageOffset");
-            if (data.contains("DeadTime"))
-                ch.dead_time = data.get("DeadTime");
-            if (data.contains("FiniteTrigNum"))
-                ch.finite_trig_num = data.get("FiniteTrigNum");
-            if (data.contains("WaveDataEnable"))
-                ch.wave_data_enable = data.get("WaveDataEnable");
-            if (data.contains("WorkMode"))
-                ch.work_mode = data.get("WorkMode");
-            if (data.contains("ExternalTrigPolarity"))
-                ch.external_trig_polarity = data.get("ExternalTrigPolarity");
+            // Card_X_Ch_Y_Field
+            size_t chSep = rest.find("Ch_");
+            if (chSep != 0) continue;
+            size_t p2 = rest.find('_', 3);
+            if (p2 == std::string::npos) continue;
+            int chIdx = std::stoi(rest.substr(3, p2 - 3)) - 1;
+            std::string field = rest.substr(p2 + 1);
+
+            if (chIdx < 0 || chIdx >= (int)card.channels.size()) continue;
+            auto& ch = card.channels[chIdx];
+
+            if (field == "Enable")     { ch.runEnable = (val == "1"); needRingCreate = true; continue; }
+            if (field == "Channel")    { ch.channel = std::stoi(val); continue; }
+            if (field == "CardIndex")  { ch.cardIndex = std::stoi(val); continue; }
+            if (field == "Slot")       { ch.slot = std::stoi(val); continue; }
+
+            if (field == "TrigSource")           { ch.trig_source = val; continue; }
+            if (field == "TrigMode")             { ch.trig_mode = val; continue; }
+            if (field == "TrigLength")           { ch.trig_length = val; continue; }
+            if (field == "TrigLevel")            { ch.trig_level = val; continue; }
+            if (field == "TrigPulseWidth")       { ch.trig_pulse_width = val; continue; }
+            if (field == "TrigPolarity")         { ch.trig_polarity = val; continue; }
+            if (field == "TrigDelayTime")        { ch.trig_delay_time = val; continue; }
+            if (field == "TrigPosition")         { ch.trig_position = val; continue; }
+            if (field == "TrigWindowStart")      { ch.trig_window_start = val; continue; }
+            if (field == "VoltageRange")         { ch.voltage_range = val; continue; }
+            if (field == "VoltageOffset")        { ch.voltage_offset = val; continue; }
+            if (field == "DeadTime")             { ch.dead_time = val; continue; }
+            if (field == "FiniteTrigNum")        { ch.finite_trig_num = val; continue; }
+            if (field == "WaveDataEnable")       { ch.wave_data_enable = val; continue; }
+            if (field == "WorkMode")             { ch.work_mode = val; continue; }
+            if (field == "K")                    { ch.k = val; continue; }
+            if (field == "K1st")                 { ch.k1st = val; continue; }
+            if (field == "Kx")                   { ch.kx = val; continue; }
+            if (field == "Ky")                   { ch.ky = val; continue; }
+            if (field == "OffsetX")              { ch.offset_x = val; continue; }
+            if (field == "OffsetY")              { ch.offset_y = val; continue; }
+            if (field == "B1st")                 { ch.b1st = val; continue; }
+            if (field == "ValueThresholdHigh")   { ch.value_threshold_high = val; continue; }
+            if (field == "ValueThresholdLow")    { ch.value_threshold_low = val; continue; }
+            if (field == "ExternalTrigPolarity") { ch.external_trig_polarity = val; continue; }
+            if (field == "IpGlobalRST")          { ch.ip_global_rst = val; continue; }
+            if (field == "IpLogicRST")           { ch.ip_logic_rst = val; continue; }
         }
     }
-    std::cout << "[DAQModule] Configured from message\n";
+
+    // 如果有结构性变更（card/channel 数量变化），重建 ring
+    if (needRingCreate && !configured_.load()) {
+        for (auto* r : rings_) delete r;
+        rings_.clear();
+
+        int totalCh = 0;
+        for (const auto& cardCfg : config_.cards) {
+            if (cardCfg.card_type != "1073") continue;
+            for (const auto& chCfg : cardCfg.channels)
+                if (chCfg.runEnable) totalCh++;
+        }
+        if (totalCh > MAX_CH) totalCh = MAX_CH;
+
+        for (int i = 0; i < totalCh; i++)
+            rings_.push_back(new UserCircularBuffer(256U * 1024U * 1024U, 384));
+
+        configured_ = true;
+        std::cout << "[ModuleDAQ] Config loaded: " << totalCh << " ring(s)\n";
+    }
 }
 
-bool DAQModule::onStart() {
+bool ModuleDAQ::onStart() {
     if (acquiring_.load()) {
-        std::cerr << "[DAQModule] Already running\n";
+        std::cerr << "[ModuleDAQ] Already running\n";
         return false;
     }
 
     // ── 扫描硬件 ────────────────────────────────────────────
-    std::cout << "[DAQModule] Initializing SDK...\n";
+    std::cout << "[ModuleDAQ] Initializing SDK...\n";
     CxDeviceSetSdkOption("WithLog", "false");
     CxDeviceSdkInit();
 
@@ -163,7 +199,7 @@ bool DAQModule::onStart() {
     uint32_t hwCount = 0;
     CxDeviceGetChassis(PXIe, &chassis);
     CxDeviceGetCards(chassis, &hwCards, &hwCount);
-    std::cout << "[DAQModule] Found " << hwCount << " cards in chassis\n";
+    std::cout << "[ModuleDAQ] Found " << hwCount << " cards in chassis\n";
 
     cards1073_.clear();
     card3010_ = nullptr;
@@ -175,7 +211,7 @@ bool DAQModule::onStart() {
         else if (did == 0x3010)
             card3010_ = hwCards[i];
     }
-    std::cout << "[DAQModule] " << cards1073_.size() << " x 1073, "
+    std::cout << "[ModuleDAQ] " << cards1073_.size() << " x 1073, "
               << (card3010_ ? 1 : 0) << " x 3010\n";
 
     // 按 slot 号升序排序（确保匹配顺序与物理槽位一致）
@@ -194,7 +230,7 @@ bool DAQModule::onStart() {
         if (cardCfg.card_type != "1073") continue;
 
         if (cardIdx >= (int)cards1073_.size()) {
-            std::cerr << "[DAQModule] Not enough 1073 cards, remaining configs skipped\n";
+            std::cerr << "[ModuleDAQ] Not enough 1073 cards, remaining configs skipped\n";
             break;
         }
         void* hCard = cards1073_[cardIdx++];
@@ -204,16 +240,16 @@ bool DAQModule::onStart() {
         CxDeviceSetCard(hCard, "init");
         CxDeviceSetCardValue(hCard, "SyncWindowEnable", "0");
         CxDeviceSetCardValue(hCard, "SyncSource", "0");
-        std::cout << "[DAQModule] Card 1073 #" << cardIdx
+        std::cout << "[ModuleDAQ] Card 1073 #" << cardIdx
                   << " (config slot=" << cardCfg.slot << ") initializing\n";
 
         for (const auto& chCfg : cardCfg.channels) {
             if (!chCfg.runEnable) {
-                std::cout << "[DAQModule]   ch" << chCfg.channel << " disabled\n";
+                std::cout << "[ModuleDAQ]   ch" << chCfg.channel << " disabled\n";
                 continue;
             }
             if (activeChCount_ >= MAX_CH) {
-                std::cerr << "[DAQModule]   ch" << chCfg.channel
+                std::cerr << "[ModuleDAQ]   ch" << chCfg.channel
                           << " dropped (MAX_CH=" << MAX_CH << ")\n";
                 break;
             }
@@ -225,7 +261,7 @@ bool DAQModule::onStart() {
             CxDeviceSetChannelValue(hCard, ch, "TrigPulseWidth", chCfg.trig_pulse_width.c_str());
             CxDeviceSetChannelValue(hCard, ch, "VoltageRange", chCfg.voltage_range.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigLevel", chCfg.trig_level.c_str());
-            std::cout << "[DAQModule]   ch" << ch << " configured ("
+            std::cout << "[ModuleDAQ]   ch" << ch << " configured ("
                       << "TrigLength=" << chCfg.trig_length
                       << " VoltageRange=" << chCfg.voltage_range
                       << " TrigLevel=" << chCfg.trig_level
@@ -241,11 +277,11 @@ bool DAQModule::onStart() {
     }
 
     if (activeChCount_ == 0) {
-        std::cerr << "[DAQModule] No active channels to start\n";
+        std::cerr << "[ModuleDAQ] No active channels to start\n";
         CxDeviceSdkDeinit();
         return false;
     }
-    std::cout << "[DAQModule] " << activeChCount_ << " active channel(s)\n";
+    std::cout << "[ModuleDAQ] " << activeChCount_ << " active channel(s)\n";
 
     // ── 启动接收 ────────────────────────────────────────────
     for (int i = 0; i < activeChCount_; i++) {
@@ -253,41 +289,41 @@ bool DAQModule::onStart() {
         CxDeviceSetChannelRecvBufferSize(slot.cardHandle, slot.ch, 16 * 1024 * 1024);
         CxDeviceStartChannelRecv(slot.cardHandle, slot.ch);
         CxDeviceSetChannel(slot.cardHandle, slot.ch, "run");
-        std::cout << "[DAQModule] ch" << slot.ch << " (id=" << i << ") recv started\n";
+        std::cout << "[ModuleDAQ] ch" << slot.ch << " (id=" << i << ") recv started\n";
     }
 
-    std::cout << "[DAQModule] Settling 1073 (2s)...\n";
+    std::cout << "[ModuleDAQ] Settling 1073 (2s)...\n";
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // ── 3010 trigger on + 标记采集 ─────────────────────────
     if (card3010_) {
         if (init3010()) {
             setTriggerOutput(true);
-            std::cout << "[DAQModule] 3010 trigger enabled\n";
+            std::cout << "[ModuleDAQ] 3010 trigger enabled\n";
         }
     } else {
-        std::cout << "[DAQModule] No 3010 card, trigger not started\n";
+        std::cout << "[ModuleDAQ] No 3010 card, trigger not started\n";
     }
 
     emergencyStop_ = false;
     acquiring_ = true;
-    std::cout << "[DAQModule] Acquiring (message-driven)\n";
+    std::cout << "[ModuleDAQ] Acquiring (message-driven)\n";
     return true;
 }
 
-void DAQModule::stop() {
+void ModuleDAQ::stop() {
     onStop();
     Module::stop();
 }
 
-void DAQModule::onStop() {
+void ModuleDAQ::onStop() {
     if (!acquiring_.exchange(false) && !emergencyStop_.load())
         return;
     emergencyStop_ = true;
 
     if (card3010_) {
         setTriggerOutput(false);
-        std::cout << "[DAQModule] 3010 trigger off, waiting 200ms...\n";
+        std::cout << "[ModuleDAQ] 3010 trigger off, waiting 200ms...\n";
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
@@ -296,23 +332,23 @@ void DAQModule::onStop() {
     if (card3010_) {
         CxDeviceSetCard(card3010_, "close");
         card3010_ = nullptr;
-        std::cout << "[DAQModule] 3010 closed\n";
+        std::cout << "[ModuleDAQ] 3010 closed\n";
     }
 
     doCleanup();
-    std::cout << "[DAQModule] Stopped\n";
+    std::cout << "[ModuleDAQ] Stopped\n";
 }
 
-void DAQModule::onReset() {
+void ModuleDAQ::onReset() {
     for (int i = 0; i < activeChCount_; i++) {
         activeChannels_[i].totalFrames.store(0);
         if (activeChannels_[i].ring)
             activeChannels_[i].ring->resetOverflow();
     }
-    std::cout << "[DAQModule] Stats reset\n";
+    std::cout << "[ModuleDAQ] Stats reset\n";
 }
 
-void DAQModule::onStatus(msm::Message& response) {
+void ModuleDAQ::onStatus(msm::Message& response) {
     Stats s = getStats();
     for (int i = 0; i < (int)s.total_frames.size(); i++) {
         response.data.set("ch" + std::to_string(i + 1) + "_frames",
@@ -325,7 +361,7 @@ void DAQModule::onStatus(msm::Message& response) {
     response.data.set("running", s.is_running ? "true" : "false");
 }
 
-void DAQModule::doReadOnce() {
+void ModuleDAQ::doReadOnce() {
     if (emergencyStop_.load() || activeChCount_ == 0) return;
 
     for (int i = 0; i < activeChCount_; i++) {
@@ -362,7 +398,7 @@ void DAQModule::doReadOnce() {
     }
 }
 
-void DAQModule::flushAll() {
+void ModuleDAQ::flushAll() {
     if (activeChCount_ == 0) return;
     std::vector<uint8_t> buf(4U * 1024U * 1024U);
 
@@ -398,7 +434,7 @@ void DAQModule::flushAll() {
     }
 }
 
-bool DAQModule::init3010() {
+bool ModuleDAQ::init3010() {
     if (!card3010_) return false;
 
     CxDeviceSetCard(card3010_, "open");
@@ -408,22 +444,22 @@ bool DAQModule::init3010() {
     CxDeviceSetCardValue(card3010_, "TrigSource", "2");
     CxDeviceSetCardValue(card3010_, "SoftwareSync", "1");
 
-    std::cout << "[DAQModule] 3010 initialized\n";
+    std::cout << "[ModuleDAQ] 3010 initialized\n";
     return true;
 }
 
-bool DAQModule::setTriggerOutput(bool enable) {
+bool ModuleDAQ::setTriggerOutput(bool enable) {
     if (!card3010_) return false;
     uint32_t val = enable ? 1 : 0;
     int ret = CxDeviceWriteReg(card3010_, 0x1C020, val);
     if (ret != 0) {
-        std::cerr << "[DAQModule] 3010 reg write failed: " << ret << "\n";
+        std::cerr << "[ModuleDAQ] 3010 reg write failed: " << ret << "\n";
         return false;
     }
     return true;
 }
 
-void DAQModule::doCleanup() {
+void ModuleDAQ::doCleanup() {
     if (cards1073_.empty()) return;
 
     for (int i = 0; i < activeChCount_; i++) {
@@ -443,14 +479,14 @@ void DAQModule::doCleanup() {
 
 // ── DAQVars ─────────────────────────────────────────────────────
 
-void* DAQModule::DAQVars::get(const std::string& name) {
+void* ModuleDAQ::DAQVars::get(const std::string& name) {
     return nullptr;
 }
 
-bool DAQModule::DAQVars::set(const std::string& name, const std::string& value) {
+bool ModuleDAQ::DAQVars::set(const std::string& name, const std::string& value) {
     return false;
 }
 
-std::map<std::string, std::string> DAQModule::DAQVars::list() {
+std::map<std::string, std::string> ModuleDAQ::DAQVars::list() {
     return {};
 }

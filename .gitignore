@@ -2,3 +2,5 @@ build/
 *.o
 *.a
 *.so
+.msm_session
+config/runtime_config.json

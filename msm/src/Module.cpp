@@ -19,7 +19,10 @@ void Module::start() {
 void Module::stop() {
     if (!running_) return;
     running_ = false;
-    queue_.push(Message{});
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        queue_.push(Message{});
+    }
     if (thread_ && thread_->joinable()) {
         thread_->join();
         thread_.reset();
