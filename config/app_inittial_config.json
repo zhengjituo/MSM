@@ -151,7 +151,7 @@
     },
     "app_config": {
         "autoAcqInEpicsWhenSoftwareStarts": false,
-        "dataSavePath": "/mnt/localssd/sim_data",
+        "dataSavePath": "/mnt/localssd/daq_data",
         "fileName": "PD",
         "fileType": "dat",
         "isEpicsControlMode": true,
