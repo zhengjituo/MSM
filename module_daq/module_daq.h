@@ -11,6 +11,7 @@
 #include <array>
 
 class ModuleDAQ : public msm::Module {
+    // MSG-driven acquisition: Configure(read config) → Start(init SD+)，ReadOnce/IDLE 驱动 doReadOnce
 public:
     static constexpr int MAX_CH = 16;
 

@@ -122,7 +122,7 @@ void ModuleStorage::onStatus(msm::Message& response) {
 }
 
 void ModuleStorage::onSaveBatch(const msm::Message& msg) {
-    // 保留旧接口兼容
+    // 保留旧接口兼容（当前未使用，由 onSaveBatchAll 统一处理）
     if (!recording_.load()) return;
 
     int ch = 0;

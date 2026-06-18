@@ -9,6 +9,7 @@
 #include <array>
 
 class ModuleProcess : public msm::Module {
+    // peek 第 1 帧解析 TrigID/BunchID，打印摘要 → 发 SaveBatchAll MSG 让 Storage 消费
 public:
     static constexpr int MAX_CH = 16;
 
@@ -37,7 +38,7 @@ private:
     int nCh_ = 0;
     std::array<std::atomic<int64_t>, MAX_CH> processedFrames_{};
     std::array<std::atomic<int64_t>, MAX_CH> processedBatches_{};
-    std::array<std::atomic<int64_t>, MAX_CH> lastWritePos_{};  // write_total_ at last dispatch
+    std::array<std::atomic<int64_t>, MAX_CH> lastWritePos_{};  // ring write_total_ 快照，用于判读新数据量
     std::atomic<bool> consuming_{false};
     std::atomic<bool> emergencyStop_{false};
 

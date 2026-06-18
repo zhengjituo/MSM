@@ -195,8 +195,9 @@ void ModuleSim::onStatus(msm::Message& response) {
 }
 
 // ── 用真实帧模板构造一帧 ────────────────────────────────────
+// 所有通道共享同一份帧数据, ch 参数预留
 
-void ModuleSim::buildFrame(uint8_t* buf, size_t frameSizeP, int ch,
+void ModuleSim::buildFrame(uint8_t* buf, size_t frameSizeP, int /*ch*/,
                             uint64_t trigId, uint64_t bunchId) {
     // 前 kHeaderSize 字节：拷贝 header 模板 + 填 TrigID
     std::memcpy(buf, kFrameHeader, kHeaderSize);

@@ -11,6 +11,7 @@
 #include <mutex>
 
 class ModuleStorage : public msm::Module {
+    // 收到 SaveBatchAll → readData 消费 ring → fwrite 存文件，文件满自动 rotate
 public:
     static constexpr int MAX_CH = 16;
 
@@ -27,8 +28,8 @@ private:
     void onConfigure(const msm::Json& data);
     void onStart();
     void onStop();
-    void onSaveBatch(const msm::Message& msg);
-    void onSaveBatchAll(const msm::Message& msg);
+    void onSaveBatch(const msm::Message& msg);     // 单通道兼容，未使用（由 onSaveBatchAll 统一处理）
+    void onSaveBatchAll(const msm::Message& msg);  // 主入口：Process 发来所有通道合并 MSG
     void onStatus(msm::Message& response);
 
     void writeToFile(int ch, const uint8_t* data, size_t frameCount, size_t frameSize);

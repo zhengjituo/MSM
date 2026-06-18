@@ -9,6 +9,7 @@
 #include <array>
 
 class ModuleSim : public msm::Module {
+    // 虚拟数据源: IDLE 周期触发 doGenerateOnce，构造带真实帧模板的 fake 数据写入 ring
 public:
     static constexpr int MAX_CH = 16;
 
@@ -38,7 +39,7 @@ private:
     void onStatus(msm::Message& response);
 
     void doGenerateOnce();
-    void buildFrame(uint8_t* buf, size_t frameSize, int ch,
+    void buildFrame(uint8_t* buf, size_t frameSize, int /*ch*/,
                     uint64_t trigId, uint64_t bunchId);
 
     std::vector<UserCircularBuffer*> rings_;

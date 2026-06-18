@@ -394,7 +394,7 @@ void ModuleDAQ::doReadOnce() {
         size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
         int64_t total = slot.totalFrames.fetch_add(written / flen) + (int64_t)(written / flen);
 
-        // [reader] print suppressed — see consumer onBatch for progress
+        // 读帧量在 Process/Storage 端打印，此处静默
     }
 }
 
