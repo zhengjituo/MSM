@@ -143,9 +143,8 @@ void ModuleStorage::onSaveBatch(const msm::Message& msg) {
 }
 
 void ModuleStorage::onSaveBatchAll(const msm::Message& msg) {
-    if (!recording_.load()) return;
+    bool save = recording_.load();
 
-    // Process 已检查所有通道有数据，直接取
     for (int i = 0; i < nCh_; i++) {
         if (!rings_[i]) continue;
 
@@ -161,7 +160,8 @@ void ModuleStorage::onSaveBatchAll(const msm::Message& msg) {
             continue;
         }
 
-        writeToFile(i, readBuf_.data(), batchSize_, flen);
+        if (save)
+            writeToFile(i, readBuf_.data(), batchSize_, flen);
     }
 }
 
