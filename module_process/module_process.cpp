@@ -116,7 +116,7 @@ void ModuleProcess::doConsumeOnce() {
     for (int i = 0; i < nCh_; i++) {
         if (!rings_[i]) { allReady = false; break; }
         uint64_t writeTotal = rings_[i]->getWriteTotal();
-        uint64_t lastWrite = (uint64_t)lastWritePos_[i].load();
+        uint64_t lastWrite = lastWritePos_[i].load();
         uint64_t needed = (uint64_t)batchSize_ * (uint64_t)rings_[i]->getExpectedPacketSize();
         if (writeTotal - lastWrite < needed) { allReady = false; break; }
         if (rings_[i]->availableFrames() < batchSize_) { allReady = false; break; }
@@ -159,11 +159,11 @@ void ModuleProcess::doConsumeOnce() {
     // 更新统计
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
-        uint64_t lastWrite = (uint64_t)lastWritePos_[i].load();
+        uint64_t lastWrite = lastWritePos_[i].load();
         uint64_t needed = (uint64_t)batchSize_ * (uint64_t)flen;
         processedFrames_[i].fetch_add(batchSize_);
         processedBatches_[i].fetch_add(1);
-        lastWritePos_[i].store((int64_t)(lastWrite + needed));
+        lastWritePos_[i].store(lastWrite + needed);
     }
 }
 

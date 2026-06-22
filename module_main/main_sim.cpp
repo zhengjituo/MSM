@@ -17,7 +17,7 @@ static void handle_signal(int) {
 }
 
 static DaqConfig g_config;
-static const std::string g_initConfigPath = "config/app_inittial_config.json";
+static const std::string g_initConfigPath = "config/app_initial_config.json";
 static const std::string g_runtimeConfigPath = "config/runtime_config.json";
 
 static void send(const std::string& niString) {

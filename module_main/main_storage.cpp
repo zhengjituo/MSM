@@ -69,7 +69,7 @@ int main() {
     auto& bus = msm::MessageBus::instance();
 
     // --- 1. 读配置 ---
-    if (!g_config.loadFromJson("config/app_inittial_config.json")) {
+    if (!g_config.loadFromJson("config/app_initial_config.json")) {
         std::cerr << "[main] Failed to load config\n";
         return 1;
     }

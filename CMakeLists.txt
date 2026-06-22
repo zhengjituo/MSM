@@ -72,7 +72,7 @@ target_include_directories(module_sim
 )
 
 add_executable(msm_daq_storage
-    Module_main/main_storage.cpp
+    module_main/main_storage.cpp
 )
 target_link_libraries(msm_daq_storage
     module_daq
@@ -86,7 +86,7 @@ target_link_directories(msm_daq_storage PRIVATE ${SDK_DIR})
 target_link_libraries(msm_daq_storage CxDeviceCore xdma_api2 pthread)
 
 add_executable(msm_daq_sim
-    Module_main/main_sim.cpp
+    module_main/main_sim.cpp
 )
 target_include_directories(msm_daq_sim PRIVATE module_daq)
 target_link_libraries(msm_daq_sim

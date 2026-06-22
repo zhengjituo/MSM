@@ -9,7 +9,7 @@
 
 ### 修复
 1. `main_storage.cpp` / `main.cpp`: `setTarget`/`setSender` 移到 `data.data` 赋值之后
-2. 删除 `Module_main/main.cpp` + CMake 中 `msm_daq` target
+2. 删除 `module_main/main.cpp` + CMake 中 `msm_daq` target
 3. `module_storage.cpp`: `onSaveBatchAll` 总消费 ring，仅在 `recording_` 时写文件
 4. AGENTS.md 清理过期引用
 5. 各模块头文件补充类注释
@@ -28,8 +28,9 @@ ff526c1 Storage: always consume ring, only write file when recording
 - 硬件模式: 19 万帧/通道, 3010 触发正常, flush 捕获残余数据
 
 ### 已知问题
-- `Module_main/` 目录名未统一为 `module_main/`
-- `app_inittial_config.json` 拼写错误
+- `module_main/` 目录名已统一
+
+- `app_initial_config.json` 拼写已修正
 - `doc/architecture.md` 描述已过时
 - `msm::JsonValue` / `msm::MessageQueue` 未使用死代码
 - `lastWritePos_` 使用 int64_t 跟踪 uint64_t 计数器

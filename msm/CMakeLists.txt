@@ -1,6 +1,5 @@
 add_library(msm_core STATIC
     src/Message.cpp
-    src/MessageQueue.cpp
     src/NIStringParser.cpp
     src/Module.cpp
     src/MessageBus.cpp

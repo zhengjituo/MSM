@@ -12,7 +12,7 @@ MSM (Message State Machine) 架构的 PXIe 采集控制系统，管理 1073 采�
 
 ```bash
 cmake -S . -B build && cmake --build build
-mkdir -p build/config && cp app_inittial_config.json build/config/
+mkdir -p build/config && cp app_initial_config.json build/config/
 sudo ./build/msm_daq_storage  # 硬件: 采集+存盘
 sudo ./build/msm_daq_sim      # 模拟: 虚拟数据源
 ```
