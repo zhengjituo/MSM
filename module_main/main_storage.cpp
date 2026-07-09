@@ -10,6 +10,7 @@
 #include <chrono>
 #include <csignal>
 #include <atomic>
+#include <fstream>
 
 static std::atomic<bool> g_stop{false};
 static void handle_signal(int) {
@@ -24,17 +25,14 @@ static void send(const std::string& niString) {
 }
 
 static void distributeConfig() {
-    // DAQ: 把 struct 拍平成键值对，塞进 MSG data
     msm::Message daqMsg("Configure");
     daqMsg.data.data = g_config.toKeyValues();
     daqMsg.setTarget("DAQModule");
     daqMsg.setSender("Main");
     msm::MessageBus::instance().send(daqMsg);
 
-    // Process 参数
     send("Configure >> BatchSize=10000, StorageTarget=Storage -@ Process");
 
-    // Storage 参数
     send("Configure >> SavePath=" + g_config.data_save_path
          + ", FileName=" + g_config.file_name
          + ", FileType=" + g_config.file_type
@@ -57,9 +55,38 @@ static void printStatus(const ModuleDAQ& daq,
                   << " overflow=" << s.overflow_count[i]
                   << " frame_size=" << s.frame_size[i]
                   << " processed=" << process.getProcessedFrames(i)
-                  << " saved=" << storage.getSavedFrames(i) << "\n";
+                  << " saved=" << storage.getSavedFrames(i)
+                  << " trig_id=" << process.getLastTrigId(i)
+                  << " bunch_id=" << process.getLastBunchId(i) << "\n";
     }
     std::cout << "================\n" << std::endl;
+}
+
+static void writeLiveJSON(const ModuleDAQ& daq,
+                          const ModuleProcess& process,
+                          const ModuleStorage& storage) {
+    ModuleDAQ::Stats dstat = daq.getStats();
+    std::string out = "{\n";
+    out += "  \"nch\": " + std::to_string(dstat.total_frames.size()) + ",\n";
+    out += "  \"running\": " + std::string(dstat.is_running ? "true" : "false") + ",\n";
+    out += "  \"channels\": [\n";
+    for (size_t i = 0; i < dstat.total_frames.size(); i++) {
+        if (i > 0) out += ",\n";
+        out += "    {\n";
+        out += "      \"ch\": " + std::to_string((int)(i + 1)) + ",\n";
+        out += "      \"frames\": " + std::to_string(dstat.total_frames[i]) + ",\n";
+        out += "      \"overflow\": " + std::to_string(dstat.overflow_count[i]) + ",\n";
+        out += "      \"frame_size\": " + std::to_string(dstat.frame_size[i]) + ",\n";
+        out += "      \"processed\": " + std::to_string(process.getProcessedFrames((int)i)) + ",\n";
+        out += "      \"batches\": " + std::to_string(process.getProcessedBatches((int)i)) + ",\n";
+        out += "      \"trig_id\": " + std::to_string(process.getLastTrigId((int)i)) + ",\n";
+        out += "      \"bunch_id\": " + std::to_string(process.getLastBunchId((int)i)) + ",\n";
+        out += "      \"saved\": " + std::to_string(storage.getSavedFrames((int)i)) + "\n";
+        out += "    }";
+    }
+    out += "\n  ]\n}\n";
+    std::ofstream f("/tmp/msm_live.json");
+    f << out;
 }
 
 int main() {
@@ -68,24 +95,20 @@ int main() {
 
     auto& bus = msm::MessageBus::instance();
 
-    // --- 1. 读配置 ---
     if (!g_config.loadFromJson("config/app_initial_config.json")) {
         std::cerr << "[main] Failed to load config\n";
         return 1;
     }
 
-    // --- 2. 创建模块，先启动 DAQ 线程 ---
     ModuleDAQ daq;
     bus.registerModule(&daq);
     daq.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // --- 3. 通过 MSG 下发配置 ---
     distributeConfig();
     while (!daq.isConfigured())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    // --- 4. 获取 ring，创建 Process 和 Storage ---
     std::vector<UserCircularBuffer*> allRings;
     for (int i = 0; i < daq.getRingCount(); i++)
         allRings.push_back(daq.getRing(i));
@@ -104,7 +127,6 @@ int main() {
 
     std::cout << "[main] DAQ started: " << daq.getRingCount() << " rings\n";
 
-    // --- 5. 启动采集 ---
     send("Start >> -@ Storage");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Start >> -@ Process");
@@ -129,8 +151,12 @@ int main() {
         }
     });
 
-    while (!g_stop.load())
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    int tick = 0;
+    while (!g_stop.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if (++tick % 5 == 0)
+            writeLiveJSON(daq, process, storage);
+    }
 
     std::cout << "\n[main] Shutting down...\n";
 

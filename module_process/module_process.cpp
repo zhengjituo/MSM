@@ -17,10 +17,12 @@ ModuleProcess::ModuleProcess(const std::string& name,
     for (int i = 0; i < nCh_; i++) {
         if (!rings_[i])
             std::cerr << "[" << name_ << "] WARN: null ring[" << i << "]\n";
+        lastTrigId_[i].store(0);
+        lastBunchId_[i].store(0);
     }
-    vars_.parent = this;
     idleDelayMs_ = 10;
     peekBuf_.resize(4096);
+    registerVars();
 }
 
 ModuleProcess::~ModuleProcess() {
@@ -28,7 +30,7 @@ ModuleProcess::~ModuleProcess() {
 }
 
 msm::ModuleVars* ModuleProcess::getVars() {
-    return &vars_;
+    return &tableVars_;
 }
 
 int64_t ModuleProcess::getProcessedFrames(int ch) const {
@@ -39,6 +41,16 @@ int64_t ModuleProcess::getProcessedFrames(int ch) const {
 int64_t ModuleProcess::getProcessedBatches(int ch) const {
     if (ch < 0 || ch >= nCh_) return 0;
     return processedBatches_[ch].load();
+}
+
+int64_t ModuleProcess::getLastTrigId(int ch) const {
+    if (ch < 0 || ch >= nCh_) return 0;
+    return lastTrigId_[ch].load();
+}
+
+int64_t ModuleProcess::getLastBunchId(int ch) const {
+    if (ch < 0 || ch >= nCh_) return 0;
+    return lastBunchId_[ch].load();
 }
 
 void ModuleProcess::setStorageTarget(const std::string& target) {
@@ -83,8 +95,11 @@ void ModuleProcess::onConfigure(const msm::Json& data) {
 
 void ModuleProcess::onStart() {
     emergencyStop_ = false;
-    for (int i = 0; i < nCh_; i++)
+    for (int i = 0; i < nCh_; i++) {
         lastWritePos_[i].store(0);
+        lastTrigId_[i].store(0);
+        lastBunchId_[i].store(0);
+    }
     consuming_ = true;
     std::cout << "[" << name_ << "] Processing (message-driven, " << nCh_
               << " ch, batch=" << batchSize_ << ")\n";
@@ -105,13 +120,37 @@ void ModuleProcess::onStatus(msm::Message& response) {
                           std::to_string(processedFrames_[i].load()));
         response.data.set("ch" + std::to_string(i + 1) + "_batches",
                           std::to_string(processedBatches_[i].load()));
+        response.data.set("ch" + std::to_string(i + 1) + "_trig_id",
+                          std::to_string(lastTrigId_[i].load()));
+        response.data.set("ch" + std::to_string(i + 1) + "_bunch_id",
+                          std::to_string(lastBunchId_[i].load()));
     }
+}
+
+void ModuleProcess::registerVars() {
+    for (int i = 0; i < MAX_CH; i++) {
+        std::string idx = std::to_string(i + 1);
+        declareVar("ch" + idx + "_frames", processedFrames_[i]);
+        declareVar("ch" + idx + "_batches", processedBatches_[i]);
+        declareVar("ch" + idx + "_trig_id", lastTrigId_[i]);
+        declareVar("ch" + idx + "_bunch_id", lastBunchId_[i]);
+    }
+}
+
+static inline uint32_t readU32BE(const uint8_t* p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8)  | (uint32_t)p[3];
+}
+
+static inline uint64_t readU48BE(const uint8_t* p) {
+    return ((uint64_t)p[0] << 40) | ((uint64_t)p[1] << 32) |
+           ((uint64_t)p[2] << 24) | ((uint64_t)p[3] << 16) |
+           ((uint64_t)p[4] << 8)  | (uint64_t)p[5];
 }
 
 void ModuleProcess::doConsumeOnce() {
     if (emergencyStop_.load()) return;
 
-    // 检查所有通道是否有足够数据
     bool allReady = true;
     for (int i = 0; i < nCh_; i++) {
         if (!rings_[i]) { allReady = false; break; }
@@ -123,23 +162,20 @@ void ModuleProcess::doConsumeOnce() {
     }
     if (!allReady) return;
 
-    // peek 每通道首帧，打印摘要
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
         size_t peeked = rings_[i]->peekData(peekBuf_.data(), flen);
         if (peeked < flen) continue;
         if (peekBuf_[0] != 0xEB || peekBuf_[1] != 0x91) continue;
 
-        uint32_t tid = ((uint32_t)peekBuf_[17] << 24) |
-                       ((uint32_t)peekBuf_[18] << 16) |
-                       ((uint32_t)peekBuf_[19] << 8)  | (uint32_t)peekBuf_[20];
+        uint32_t tid = readU32BE(peekBuf_.data() + 17);
         uint64_t bid = 0;
         if (flen >= 72) {
-            const uint8_t* t = peekBuf_.data() + flen - 64;
-            bid = ((uint64_t)t[2] << 40) | ((uint64_t)t[3] << 32) |
-                  ((uint64_t)t[4] << 24) | ((uint64_t)t[5] << 16) |
-                  ((uint64_t)t[6] << 8)  | (uint64_t)t[7];
+            bid = readU48BE(peekBuf_.data() + flen - 62);
         }
+
+        lastTrigId_[i].store((int64_t)tid);
+        lastBunchId_[i].store((int64_t)bid);
 
         int64_t batchNo = processedBatches_[i].load() + 1;
         std::cout << "[" << name_ << "] ch" << (i + 1)
@@ -149,14 +185,12 @@ void ModuleProcess::doConsumeOnce() {
                   << " BunchID=" << bid << "\n";
     }
 
-    // 发 1 条合并消息，Storage 不用再检查
     msm::Message save("SaveBatchAll");
     save.data.set("nCh", std::to_string(nCh_));
     save.data.set("batchSize", std::to_string(batchSize_));
     save.setTarget(storageTarget_);
     msm::MessageBus::instance().send(save);
 
-    // 更新统计
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
         uint64_t lastWrite = lastWritePos_[i].load();
@@ -165,18 +199,4 @@ void ModuleProcess::doConsumeOnce() {
         processedBatches_[i].fetch_add(1);
         lastWritePos_[i].store(lastWrite + needed);
     }
-}
-
-// ── ProcessVars ────────────────────────────────────────────────
-
-void* ModuleProcess::ProcessVars::get(const std::string& name) {
-    return nullptr;
-}
-
-bool ModuleProcess::ProcessVars::set(const std::string& name, const std::string& value) {
-    return false;
-}
-
-std::map<std::string, std::string> ModuleProcess::ProcessVars::list() {
-    return {};
 }
