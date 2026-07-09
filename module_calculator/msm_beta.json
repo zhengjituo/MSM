@@ -1,0 +1,56 @@
+{
+    "prefix": "MSM",
+    "snapshot_interval": 5,
+    "gateway": {
+        "rep_port": 5556,
+        "pub_port": 5558,
+        "rest_port": 8081,
+        "peers": [
+            {"name": "Alpha", "endpoint": "tcp://localhost:5555"}
+        ],
+        "subscriptions": [
+            {
+                "name": "Alpha",
+                "endpoint": "tcp://localhost:5557",
+                "bindings": [
+                    {"remote_var": "AddModule:sum", "local_var": "MultiplyModule:remoteResult"}
+                ]
+            }
+        ]
+    },
+    "modules": [
+        {
+            "name": "AddModule",
+            "memory_size": 24,
+            "variables": [
+                {"name":"a",           "type":"int", "offset":0,  "len":4, "dir":"i",  "epics":1},
+                {"name":"b",           "type":"int", "offset":4,  "len":4, "dir":"i",  "epics":1},
+                {"name":"sum",         "type":"int", "offset":8,  "len":4, "dir":"o",  "epics":1},
+                {"name":"action",      "type":"int", "offset":12, "len":4, "dir":"i",  "epics":1},
+                {"name":"callRemote",  "type":"int", "offset":16, "len":4, "dir":"i",  "epics":1},
+                {"name":"remoteResult","type":"int", "offset":20, "len":4, "dir":"o",  "epics":1}
+            ]
+        },
+        {
+            "name": "MultiplyModule",
+            "memory_size": 24,
+            "variables": [
+                {"name":"a",           "type":"int", "offset":0,  "len":4, "dir":"i",  "epics":1},
+                {"name":"b",           "type":"int", "offset":4,  "len":4, "dir":"i",  "epics":1},
+                {"name":"result",      "type":"int", "offset":8,  "len":4, "dir":"o",  "epics":1},
+                {"name":"action",      "type":"int", "offset":12, "len":4, "dir":"i",  "epics":1},
+                {"name":"callRemote",  "type":"int", "offset":16, "len":4, "dir":"i",  "epics":1},
+                {"name":"remoteResult","type":"int", "offset":20, "len":4, "dir":"o",  "epics":1}
+            ]
+        },
+        {
+            "name": "WaveModule",
+            "memory_size": 88,
+            "variables": [
+                {"name":"size",   "type":"int",      "offset":0,  "len":4,  "dir":"o", "epics":1},
+                {"name":"action", "type":"int",      "offset":4,  "len":4,  "dir":"i", "epics":1},
+                {"name":"wave",   "type":"double[]", "offset":8,  "len":80, "nelm":10, "dir":"o", "epics":1}
+            ]
+        }
+    ]
+}

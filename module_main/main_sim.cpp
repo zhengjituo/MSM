@@ -17,8 +17,8 @@ static void handle_signal(int) {
 }
 
 static DaqConfig g_config;
-static const std::string g_initConfigPath = "config/app_initial_config.json";
-static const std::string g_runtimeConfigPath = "config/runtime_config.json";
+static const std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
+static const std::string g_runtimeConfigPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/runtime_config.json";
 
 static void send(const std::string& niString) {
     msm::Message msg = msm::NIStringParser::parse(niString, "Main");
@@ -26,10 +26,7 @@ static void send(const std::string& niString) {
 }
 
 static void distributeConfig() {
-    // --- Process ---
     send("Configure >> BatchSize=10000 -@ Process");
-
-    // --- Storage ---
     send("Configure >> SavePath=" + g_config.data_save_path
          + ", FileName=" + g_config.file_name
          + ", FileType=" + g_config.file_type
@@ -78,23 +75,19 @@ int main() {
 
     auto& bus = msm::MessageBus::instance();
 
-    // --- 1. 加载配置 ---
     loadAndDistribute();
 
-    // --- 2. 统计使能通道数 ---
     int nCh = 0;
     for (const auto& card : g_config.cards)
         for (const auto& ch : card.channels)
             if (ch.runEnable) nCh++;
     if (nCh == 0) nCh = 4;
 
-    // --- 3. 创建模块，先启动 SIM 线程 ---
     ModuleSim sim;
     bus.registerModule(&sim);
     sim.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // --- 4. 通过 MSG 下发 SIM 配置 ---
     {
         int trigLen = 512;
         const auto* ch1 = g_config.getChannel(1, 1);
@@ -111,7 +104,6 @@ int main() {
     }
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    // --- 5. 获取 ring，创建 Process 和 Storage ---
     std::vector<UserCircularBuffer*> allRings;
     for (int i = 0; i < sim.getRingCount(); i++)
         allRings.push_back(sim.getRing(i));
@@ -130,7 +122,6 @@ int main() {
 
     std::cout << "[main] SIM started: " << sim.getRingCount() << " rings\n";
 
-    // --- 4. Start 前保存配置 ---
     saveConfig();
 
     send("Start >> -@ Storage");

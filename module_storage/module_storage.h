@@ -11,7 +11,6 @@
 #include <mutex>
 
 class ModuleStorage : public msm::Module {
-    // 收到 SaveBatchAll → readData 消费 ring → fwrite 存文件，文件满自动 rotate
 public:
     static constexpr int MAX_CH = 16;
 
@@ -19,7 +18,6 @@ public:
     ~ModuleStorage();
 
     void handleState(const msm::Message& msg) override;
-    msm::ModuleVars* getVars() override;
 
     int64_t getSavedFrames(int ch) const;
     int64_t getSavedBytes(int ch) const;
@@ -28,9 +26,10 @@ private:
     void onConfigure(const msm::Json& data);
     void onStart();
     void onStop();
-    void onSaveBatch(const msm::Message& msg);     // 单通道兼容，未使用（由 onSaveBatchAll 统一处理）
-    void onSaveBatchAll(const msm::Message& msg);  // 主入口：Process 发来所有通道合并 MSG
+    void onSaveBatch(const msm::Message& msg);
+    void onSaveBatchAll(const msm::Message& msg);
     void onStatus(msm::Message& response);
+    void registerVars();
 
     void writeToFile(int ch, const uint8_t* data, size_t frameCount, size_t frameSize);
     void openFiles();
@@ -40,13 +39,11 @@ private:
     void saveState();
     std::string formatFilePath(int ch, int seq) const;
 
-    // ring buffer
     std::vector<UserCircularBuffer*> rings_;
     int nCh_ = 0;
     size_t batchSize_ = 10000;
 
-    // file I/O
-    std::string savePath_ = "/mnt/localssd";
+    std::string savePath_ = "/mnt/localssd/daq_data";
     std::string fileName_ = "PD";
     std::string fileType_ = "dat";
     size_t maxSaveSizeMB_ = 1024;
@@ -67,13 +64,6 @@ private:
     std::atomic<bool> recording_{false};
     std::mutex fileMtx_;
     std::vector<uint8_t> readBuf_;
-
-    struct StorageVars : msm::ModuleVars {
-        void* get(const std::string& name) override;
-        bool set(const std::string& name, const std::string& value) override;
-        std::map<std::string, std::string> list() override;
-        ModuleStorage* parent = nullptr;
-    } vars_;
 };
 
 #endif

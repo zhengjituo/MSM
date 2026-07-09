@@ -1,0 +1,20 @@
+{
+  "module": "DCProducer",
+  "dc_producer": {
+    "data_port": 9100,
+    "frames_per_batch": 1000,
+    "frame_size": 128,
+    "total_batches": 2000
+  },
+  "gateway": {
+    "rep_port": 5555,
+    "pub_port": 5557,
+    "rest_port": 8080,
+    "peers": [
+      {"name": "Beta", "endpoint": "tcp://127.0.0.1:5565"}
+    ],
+    "subscriptions": [
+      {"name": "Beta", "endpoint": "tcp://127.0.0.1:5567"}
+    ]
+  }
+}

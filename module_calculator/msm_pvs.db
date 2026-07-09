@@ -1,0 +1,62 @@
+record(longout, "MSM:AddModule:a") {
+    field(DESC, "AddModule:a")
+}
+
+record(longout, "MSM:AddModule:b") {
+    field(DESC, "AddModule:b")
+}
+
+record(longin, "MSM:AddModule:sum") {
+    field(DESC, "AddModule:sum")
+}
+
+record(longout, "MSM:AddModule:action") {
+    field(DESC, "AddModule:action")
+}
+
+record(longout, "MSM:AddModule:callRemote") {
+    field(DESC, "AddModule:callRemote")
+}
+
+record(longin, "MSM:AddModule:remoteResult") {
+    field(DESC, "AddModule:remoteResult")
+}
+
+record(longout, "MSM:MultiplyModule:a") {
+    field(DESC, "MultiplyModule:a")
+}
+
+record(longout, "MSM:MultiplyModule:b") {
+    field(DESC, "MultiplyModule:b")
+}
+
+record(longin, "MSM:MultiplyModule:result") {
+    field(DESC, "MultiplyModule:result")
+}
+
+record(longout, "MSM:MultiplyModule:action") {
+    field(DESC, "MultiplyModule:action")
+}
+
+record(longout, "MSM:MultiplyModule:callRemote") {
+    field(DESC, "MultiplyModule:callRemote")
+}
+
+record(longin, "MSM:MultiplyModule:remoteResult") {
+    field(DESC, "MultiplyModule:remoteResult")
+}
+
+record(longin, "MSM:WaveModule:size") {
+    field(DESC, "WaveModule:size")
+}
+
+record(longout, "MSM:WaveModule:action") {
+    field(DESC, "WaveModule:action")
+}
+
+record(waveform, "MSM:WaveModule:wave") {
+    field(DESC, "WaveModule:wave")
+    field(FTVL, "DOUBLE")
+    field(NELM, "10")
+}
+

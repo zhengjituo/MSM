@@ -19,17 +19,13 @@ ModuleStorage::ModuleStorage(const std::vector<UserCircularBuffer*>& rings)
         if (!rings_[i])
             std::cerr << "[Storage] WARN: null ring[" << i << "]\n";
     }
-    vars_.parent = this;
-    readBuf_.resize(64U * 1024U * 1024U);  // 64MB staging (max 4ch × 10k × 1152 ≈ 46MB)
+    readBuf_.resize(64U * 1024U * 1024U);
+    registerVars();
     loadState();
 }
 
 ModuleStorage::~ModuleStorage() {
     closeFiles();
-}
-
-msm::ModuleVars* ModuleStorage::getVars() {
-    return &vars_;
 }
 
 int64_t ModuleStorage::getSavedFrames(int ch) const {
@@ -45,7 +41,6 @@ int64_t ModuleStorage::getSavedBytes(int ch) const {
 void ModuleStorage::handleState(const msm::Message& msg) {
     if (msg.cmd == "SaveBatchAll") {
         onSaveBatchAll(msg);
-
     } else if (msg.cmd == "Configure") {
         onConfigure(msg.data);
     } else if (msg.cmd == "Start") {
@@ -78,8 +73,7 @@ void ModuleStorage::onConfigure(const msm::Json& data) {
         batchSize_ = static_cast<size_t>(data.getInt("BatchSize"));
     if (data.contains("FilePathTemplate"))
         filePathTemplate_ = data.get("FilePathTemplate");
-    // 确保 staging 缓冲区足够大
-    size_t maxFl = 1152;  // TrigLength=512 → 1152
+    size_t maxFl = 1152;
     size_t need = batchSize_ * maxFl;
     if (readBuf_.size() < need)
         readBuf_.resize(need);
@@ -122,62 +116,48 @@ void ModuleStorage::onStatus(msm::Message& response) {
 }
 
 void ModuleStorage::onSaveBatch(const msm::Message& msg) {
-    // 保留旧接口兼容（当前未使用，由 onSaveBatchAll 统一处理）
     if (!recording_.load()) return;
-
     int ch = 0;
     if (msg.data.contains("ch"))
         ch = msg.data.getInt("ch");
     if (ch < 0 || ch >= nCh_ || !rings_[ch]) return;
-
     size_t flen = rings_[ch]->getExpectedPacketSize();
     size_t needed = batchSize_ * flen;
-
     if (readBuf_.size() < needed)
         readBuf_.resize(needed);
-
     size_t got = rings_[ch]->readData(readBuf_.data(), needed);
     if (got != needed) return;
-
     writeToFile(ch, readBuf_.data(), batchSize_, flen);
 }
 
 void ModuleStorage::onSaveBatchAll(const msm::Message& msg) {
+    (void)msg;
     bool save = recording_.load();
-
     for (int i = 0; i < nCh_; i++) {
         if (!rings_[i]) continue;
-
         size_t flen = rings_[i]->getExpectedPacketSize();
         size_t needed = batchSize_ * flen;
-
         if (readBuf_.size() < needed)
             readBuf_.resize(needed);
-
         size_t got = rings_[i]->readData(readBuf_.data(), needed);
         if (got != needed) {
             std::cerr << "[Storage] ch" << (i + 1) << " read mismatch\n";
             continue;
         }
-
         if (save)
             writeToFile(i, readBuf_.data(), batchSize_, flen);
     }
 }
-
-// ── file I/O ────────────────────────────────────────────────
 
 void ModuleStorage::writeToFile(int ch, const uint8_t* data,
                                  size_t frameCount, size_t frameSize)
 {
     if (ch < 0 || ch >= MAX_CH) return;
     size_t bytes = frameCount * frameSize;
-
     std::lock_guard<std::mutex> lock(fileMtx_);
     if (!recording_.load()) return;
     auto& f = files_[ch];
     if (!f.fp) return;
-
     size_t written = fwrite(data, 1, bytes, f.fp);
     if (written != bytes) {
         std::cerr << "[Storage] ch" << (ch + 1)
@@ -187,21 +167,17 @@ void ModuleStorage::writeToFile(int ch, const uint8_t* data,
     f.bytesWritten += written;
     f.framesSaved.fetch_add(frameCount);
     f.bytesSaved.fetch_add(written);
-
     if (f.bytesWritten >= maxSaveSizeMB_ * 1024U * 1024U)
         rotateFile(ch);
 }
 
 void ModuleStorage::openFiles() {
     mkdir(savePath_.c_str(), 0755);
-
     for (int i = 0; i < nCh_ && i < MAX_CH; i++) {
         auto& f = files_[i];
         f.sequence = 0;
         f.bytesWritten = 0;
-
         std::string path = formatFilePath(i, f.sequence);
-
         f.fp = fopen(path.c_str(), "wb");
         if (!f.fp) {
             std::cerr << "[Storage] Failed to open " << path
@@ -227,15 +203,11 @@ void ModuleStorage::rotateFile(int ch) {
     if (ch < 0 || ch >= MAX_CH) return;
     auto& f = files_[ch];
     if (!f.fp) return;
-
     fclose(f.fp);
     f.fp = nullptr;
-
     f.sequence++;
     f.bytesWritten = 0;
-
     std::string path = formatFilePath(ch, f.sequence);
-
     f.fp = fopen(path.c_str(), "wb");
     if (!f.fp) {
         std::cerr << "[Storage] Rotate failed: " << path
@@ -245,15 +217,10 @@ void ModuleStorage::rotateFile(int ch) {
     }
 }
 
-// ── session 持久化 ───────────────────────────────────────────
-
 void ModuleStorage::loadState() {
     std::string path = statePath_ + "/.msm_session";
     std::ifstream f(path);
-    if (!f.is_open()) {
-        sessionId_ = 0;
-        return;
-    }
+    if (!f.is_open()) { sessionId_ = 0; return; }
     std::string line;
     while (std::getline(f, line)) {
         if (line.compare(0, 11, "session_id=") == 0)
@@ -288,16 +255,14 @@ std::string ModuleStorage::formatFilePath(int ch, int seq) const {
     return result;
 }
 
-// ── StorageVars ────────────────────────────────────────────────
-
-void* ModuleStorage::StorageVars::get(const std::string& name) {
-    return nullptr;
-}
-
-bool ModuleStorage::StorageVars::set(const std::string& name, const std::string& value) {
-    return false;
-}
-
-std::map<std::string, std::string> ModuleStorage::StorageVars::list() {
-    return {};
+void ModuleStorage::registerVars() {
+    declareVar("recording", recording_);
+    declareVar("save_path", savePath_);
+    declareVar("run_id", runId_);
+    int maxCh = nCh_ > 0 ? nCh_ : MAX_CH;
+    for (int i = 0; i < maxCh; i++) {
+        std::string idx = std::to_string(i + 1);
+        declareVar("ch" + idx + "_saved_frames", files_[i].framesSaved);
+        declareVar("ch" + idx + "_saved_bytes", files_[i].bytesSaved);
+    }
 }

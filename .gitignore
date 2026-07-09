@@ -1,6 +1,30 @@
-build/
-*.o
-*.a
-*.so
-.msm_session
-config/runtime_config.json
+# MSM Build outputs
+module_core/build/
+module_core/build/*
+!module_core/build/.gitkeep
+module_datachannel/build/
+module_datachannel/build/*
+
+# IDE files
+.vs/
+*.vcxproj.user
+*.suo
+
+# Executables (for testing)
+*.exe
+*.pdb
+*.ilk
+
+# Library
+*.lib
+*.dll
+
+# Backup/cleanup
+backup/
+
+# External dependencies (user-provided, not committed)
+module_core/extern/epics/
+
+# Cache
+CMakeCache.txt
+CMakeFiles/

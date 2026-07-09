@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MSM Control</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+h1 { color: #00d4ff; margin-bottom: 20px; font-weight: 300; font-size: 24px; }
+.group-box { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 16px; display: inline-block; vertical-align: top; min-width: 280px; }
+.group-box h2 { color: #00d4ff; font-size: 16px; font-weight: 500; margin-bottom: 12px; border-bottom: 1px solid #0f3460; padding-bottom: 8px; }
+.row { display: flex; align-items: center; margin-bottom: 8px; }
+.row label { width: 80px; color: #a0a0b0; font-size: 13px; flex-shrink: 0; }
+.row .value { flex: 1; }
+input, button, .ro-value { width: 100%; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+input { background: #0a0a1a; border: 1px solid #0f3460; color: #e0e0e0; outline: none; }
+input:focus { border-color: #00d4ff; }
+button { background: #00d4ff; border: none; color: #1a1a2e; font-weight: 600; cursor: pointer; transition: background .2s; }
+button:hover { background: #00b8e6; }
+button:active { background: #0099cc; }
+.ro-value { background: #0a0a1a; border: 1px solid #1a3a5c; color: #4ae0a0; }
+.plot { background: #0a0a1a; border: 1px solid #0f3460; border-radius: 4px; height: 120px; position: relative; overflow: hidden; }
+.plot canvas { width: 100%; height: 100%; display: block; }
+.status-bar { margin-top: 16px; font-size: 12px; color: #606080; }
+.status-bar .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.dot.green { background: #4ae0a0; }
+.dot.red { background: #e04a4a; }
+</style>
+</head>
+<body>
+
+<h1>MSM Control</h1>
+<div id="groups"></div>
+<div class="status-bar">
+  <span class="dot green"></span> Connected <span id="updateTime"></span>
+</div>
+
+<script>
+const API = '/api';
+const POLL_MS = 1000;
+
+const moduleConfig = null; // fetched from /api/schema
+
+// ═══ data store ═══
+const inputs = {};  // "Module:var" → DOM input element
+const outputs = {}; // "Module:var" → DOM display element
+const actions = {}; // "Module:var" → button
+
+async function apiGet(path) {
+  try {
+    const r = await fetch(`${API}${path}`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function apiPut(path, val) {
+  try {
+    await fetch(`${API}${path}`, { method: 'PUT', body: String(val) });
+  } catch {}
+}
+
+// ═══ build UI ═══
+async function buildUI() {
+  const schema = await apiGet('/schema');
+  if (!schema) {
+    document.getElementById('groups').innerHTML = '<p style="color:#e04a4a">Cannot connect to MSM REST API at ' + API + '</p>';
+    return;
+  }
+
+  const container = document.getElementById('groups');
+  container.innerHTML = '';
+
+  for (const [modName, mod] of Object.entries(schema)) {
+    const vars = mod.variables || [];
+    const box = document.createElement('div');
+    box.className = 'group-box';
+    const title = document.createElement('h2');
+    title.textContent = modName;
+    box.appendChild(title);
+
+    for (const v of vars) {
+      const row = document.createElement('div');
+      row.className = 'row';
+
+      const label = document.createElement('label');
+      label.textContent = v.name;
+      row.appendChild(label);
+
+      const valDiv = document.createElement('div');
+      valDiv.className = 'value';
+      const pvName = `${modName}:${v.name}`;
+      const apiPath = `/${modName}/${v.name}`;
+      const isAction = v.name === 'action' || v.name === 'callRemote';
+      const isArray = (v.type || '').includes('[]');
+
+      if (isAction && v.dir === 'i') {
+        const btn = document.createElement('button');
+        btn.textContent = 'Run';
+        btn.onclick = async () => {
+          btn.disabled = true;
+          btn.textContent = '...';
+          const prefix = modName + ':';
+          for (const [key, inp] of Object.entries(inputs)) {
+            if (key.startsWith(prefix) && inp !== document.activeElement) {
+              const vn = key.split(':')[1];
+              await apiPut(`/${modName}/${vn}`, inp.value);
+            }
+          }
+          await apiPut(apiPath, 1);
+          btn.disabled = false;
+          btn.textContent = 'Run';
+        };
+        valDiv.appendChild(btn);
+        actions[pvName] = btn;
+      } else if (isArray) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 280; canvas.height = 100;
+        valDiv.appendChild(canvas);
+        outputs[pvName] = canvas;
+      } else if (v.dir === 'o' || v.dir === 'io') {
+        const span = document.createElement('div');
+        span.className = 'ro-value';
+        span.textContent = '-';
+        valDiv.appendChild(span);
+        outputs[pvName] = span;
+      } else {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.placeholder = '-';
+        inp.onblur = () => apiPut(apiPath, inp.value);
+        valDiv.appendChild(inp);
+        inputs[pvName] = inp;
+      }
+
+      row.appendChild(valDiv);
+      box.appendChild(row);
+    }
+
+    container.appendChild(box);
+  }
+}
+
+// ═══ poll values ═══
+async function poll() {
+  const schema = await apiGet('/schema');
+  if (!schema) return;
+
+  document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+
+  for (const [modName, mod] of Object.entries(schema)) {
+    const modData = await apiGet(`/${modName}`);
+    if (!modData) continue;
+    const vars = modData.variables || {};
+    for (const [vName, vVal] of Object.entries(vars)) {
+      const pvName = `${modName}:${vName}`;
+
+      if (outputs[pvName]) {
+        if (outputs[pvName] instanceof HTMLCanvasElement) {
+          drawWaveform(outputs[pvName], vVal);
+        } else {
+          outputs[pvName].textContent = vVal;
+        }
+      } else if (inputs[pvName]) {
+        if (inputs[pvName] !== document.activeElement) {
+          inputs[pvName].value = vVal;
+        }
+      }
+    }
+  }
+}
+
+function drawWaveform(canvas, data) {
+  let arr = data;
+  if (typeof data === 'string') { try { arr = JSON.parse(data); } catch { return; } }
+  if (!Array.isArray(arr) || arr.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const min = Math.min(...arr), max = Math.max(...arr);
+  const range = max - min || 1;
+
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < arr.length; i++) {
+    const x = (i / (arr.length - 1)) * w;
+    const y = h - ((arr[i] - min) / range) * (h - 10) - 5;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+buildUI();
+setInterval(poll, POLL_MS);
+poll();
+</script>
+</body>
+</html>

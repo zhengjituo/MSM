@@ -1,0 +1,39 @@
+{
+    "prefix": "MSM",
+    "snapshot_interval": 5,
+    "modules": [
+        {
+            "name": "AddModule",
+            "memory_size": 24,
+            "variables": [
+                {"name":"a",           "type":"int", "offset":0,  "len":4, "dir":"i",  "epics":1},
+                {"name":"b",           "type":"int", "offset":4,  "len":4, "dir":"i",  "epics":1},
+                {"name":"sum",         "type":"int", "offset":8,  "len":4, "dir":"o",  "epics":1},
+                {"name":"action",      "type":"int", "offset":12, "len":4, "dir":"i",  "epics":1},
+                {"name":"callRemote",  "type":"int", "offset":16, "len":4, "dir":"i",  "epics":1},
+                {"name":"remoteResult","type":"int", "offset":20, "len":4, "dir":"o",  "epics":1}
+            ]
+        },
+        {
+            "name": "MultiplyModule",
+            "memory_size": 24,
+            "variables": [
+                {"name":"a",           "type":"int", "offset":0,  "len":4, "dir":"i",  "epics":1},
+                {"name":"b",           "type":"int", "offset":4,  "len":4, "dir":"i",  "epics":1},
+                {"name":"result",      "type":"int", "offset":8,  "len":4, "dir":"o",  "epics":1},
+                {"name":"action",      "type":"int", "offset":12, "len":4, "dir":"i",  "epics":1},
+                {"name":"callRemote",  "type":"int", "offset":16, "len":4, "dir":"i",  "epics":1},
+                {"name":"remoteResult","type":"int", "offset":20, "len":4, "dir":"o",  "epics":1}
+            ]
+        },
+        {
+            "name": "WaveModule",
+            "memory_size": 88,
+            "variables": [
+                {"name":"size",   "type":"int",      "offset":0,  "len":4,  "dir":"o", "epics":1},
+                {"name":"action", "type":"int",      "offset":4,  "len":4,  "dir":"i", "epics":1},
+                {"name":"wave",   "type":"double[]", "offset":8,  "len":80, "nelm":10, "dir":"o", "epics":1}
+            ]
+        }
+    ]
+}

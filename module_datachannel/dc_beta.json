@@ -1,0 +1,17 @@
+{
+  "module": "DCConsumer",
+  "dc_consumer": {
+    "data_host": "127.0.0.1",
+    "data_port": 9100
+  },
+  "gateway": {
+    "rep_port": 5565,
+    "pub_port": 5567,
+    "peers": [
+      {"name": "Alpha", "endpoint": "tcp://127.0.0.1:5555"}
+    ],
+    "subscriptions": [
+      {"name": "Alpha", "endpoint": "tcp://127.0.0.1:5557"}
+    ]
+  }
+}

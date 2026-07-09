@@ -1,0 +1,5 @@
+
+
+include("${CMAKE_CURRENT_LIST_DIR}/msm_coreTargets.cmake")
+
+check_required_components(msm_core)

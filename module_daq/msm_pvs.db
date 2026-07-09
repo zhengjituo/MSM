@@ -1,0 +1,108 @@
+record(longout, "MSM:SimDAQ:trig_length") {
+    field(DESC, "SimDAQ:trig_length")
+}
+
+record(longout, "MSM:SimDAQ:trigger_rate_hz") {
+    field(DESC, "SimDAQ:trigger_rate_hz")
+}
+
+record(longout, "MSM:SimDAQ:frames_per_cycle") {
+    field(DESC, "SimDAQ:frames_per_cycle")
+}
+
+record(longin, "MSM:SimDAQ:running") {
+    field(DESC, "SimDAQ:running")
+}
+
+record(longin, "MSM:SimDAQ:ch1_frames") {
+    field(DESC, "SimDAQ:ch1_frames")
+}
+
+record(longin, "MSM:SimDAQ:ch2_frames") {
+    field(DESC, "SimDAQ:ch2_frames")
+}
+
+record(longin, "MSM:SimDAQ:ch3_frames") {
+    field(DESC, "SimDAQ:ch3_frames")
+}
+
+record(longin, "MSM:SimDAQ:ch4_frames") {
+    field(DESC, "SimDAQ:ch4_frames")
+}
+
+record(longin, "MSM:Process:ch1_trig_id") {
+    field(DESC, "Process:ch1_trig_id")
+}
+
+record(longin, "MSM:Process:ch1_bunch_id") {
+    field(DESC, "Process:ch1_bunch_id")
+}
+
+record(longin, "MSM:Process:ch2_trig_id") {
+    field(DESC, "Process:ch2_trig_id")
+}
+
+record(longin, "MSM:Process:ch2_bunch_id") {
+    field(DESC, "Process:ch2_bunch_id")
+}
+
+record(longin, "MSM:Process:ch3_trig_id") {
+    field(DESC, "Process:ch3_trig_id")
+}
+
+record(longin, "MSM:Process:ch3_bunch_id") {
+    field(DESC, "Process:ch3_bunch_id")
+}
+
+record(longin, "MSM:Process:ch4_trig_id") {
+    field(DESC, "Process:ch4_trig_id")
+}
+
+record(longin, "MSM:Process:ch4_bunch_id") {
+    field(DESC, "Process:ch4_bunch_id")
+}
+
+record(longin, "MSM:Process:ch1_frames") {
+    field(DESC, "Process:ch1_frames")
+}
+
+record(longin, "MSM:Process:ch2_frames") {
+    field(DESC, "Process:ch2_frames")
+}
+
+record(longin, "MSM:Process:ch3_frames") {
+    field(DESC, "Process:ch3_frames")
+}
+
+record(longin, "MSM:Process:ch4_frames") {
+    field(DESC, "Process:ch4_frames")
+}
+
+record(longin, "MSM:Process:running") {
+    field(DESC, "Process:running")
+}
+
+record(longin, "MSM:Storage:recording") {
+    field(DESC, "Storage:recording")
+}
+
+record(longin, "MSM:Storage:ch1_frames") {
+    field(DESC, "Storage:ch1_frames")
+}
+
+record(longin, "MSM:Storage:ch2_frames") {
+    field(DESC, "Storage:ch2_frames")
+}
+
+record(longin, "MSM:Storage:ch3_frames") {
+    field(DESC, "Storage:ch3_frames")
+}
+
+record(longin, "MSM:Storage:ch4_frames") {
+    field(DESC, "Storage:ch4_frames")
+}
+
+record(longin, "MSM:Storage:save_enabled") {
+    field(DESC, "Storage:save_enabled")
+}
+
