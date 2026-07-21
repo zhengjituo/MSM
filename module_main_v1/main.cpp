@@ -1,7 +1,7 @@
 #include "MessageBus.h"
 #include "NIStringParser.h"
 #include "IPCServer.h"
-#include "module_sim.h"
+#include "module_simsource.h"
 #include "module_process_full.h"
 #include "module_storage.h"
 #include "daq_config.h"

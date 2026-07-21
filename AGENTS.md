@@ -24,16 +24,19 @@ MSM_DAQ/
 ├── module_process/          # 处理模块（轻量 peek 版）
 ├── module_process_full/     # 处理模块（全帧提取版，含跨通道对齐检查）
 ├── module_storage/          # 存盘模块
-├── module_sim/              # 虚拟数据源
+├── module_simsource/          # 虚拟数据源（仿真模式）
 │
 ├── module_main_v1/          # main: 仿真模式（msm_daq_sim）
 ├── module_main_v2/          # main: 硬件全功能 display（msm_daq_display）
 ├── module_main_v3/          # main: 硬件采集存盘（msm_daq_storage）
 │
+├── module_core/tests/
+│   ├── calculator/          # 框架 demo（AddModule/MultiplyModule, IPC 通信示例）
+│   └── datachannel/         # 跨进程 DataChannel 测试
+│
 └── [旧残留]                  # 不纳入新结构，不删除
-    ├── module_calculator/
-    ├── module_datachannel/
     ├── MSMvsEPICS*.md
+    ├── msm/                 # 旧版框架核心（已被 module_core 替代）
     └── ...
 ```
 

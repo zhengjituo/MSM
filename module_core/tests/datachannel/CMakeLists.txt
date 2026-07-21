@@ -4,7 +4,7 @@ project(module_datachannel VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(MSM_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../module_core)
+set(MSM_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../module_core)
 
 if(NOT TARGET msm_core)
     add_subdirectory(${MSM_CORE_DIR} msm_core_build)

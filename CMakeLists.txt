@@ -17,7 +17,7 @@ add_subdirectory(module_daq)
 add_subdirectory(module_process)
 add_subdirectory(module_process_full)
 add_subdirectory(module_storage)
-add_subdirectory(module_sim)
+add_subdirectory(module_simsource)
 
 # ── Main executables ──
 add_subdirectory(module_main_v1)   # msm_daq_sim
