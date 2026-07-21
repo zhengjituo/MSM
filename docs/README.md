@@ -33,3 +33,4 @@
 |------|------|
 | `STATUS_SNAPSHOT.md` | 2026-07-08 开发状态快照（已过时） |
 | `usage.md` | 旧 MSM 框架使用指南（calculator 示例，非 DAQ 专用） |
+| `superpowers/` | opencode 工作流插件设计文档 |
