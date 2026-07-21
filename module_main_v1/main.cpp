@@ -240,15 +240,13 @@ int main() {
     bus.registerModule(&ipc);
 
     process.start();
-    storage.start();
     ipc.start();
+    // Storage 不 start — recording_=false，SaveBatchAll 消息到来时读出丢弃不写盘
 
     std::cout << "[main] SIM started: " << sim.getRingCount() << " rings\n";
 
     saveConfig();
 
-    send("Start >> -@ Storage");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Start >> -@ Process");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Start >> -@ SimDAQ");

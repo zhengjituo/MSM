@@ -55,6 +55,10 @@ MSM_DAQ/
 5. **git commit** — 简短描述做了什么
 6. **完结 task** — 在 task 文件中填入结束 commit，标记 done
 
+### 子 Agent 协作
+- 如需分配给子 Agent 执行，在 prompt 中 **指明需预读的参考文件路径**（如 `docs/arch/msm_daq的定义.md`、`module_daq/module_daq.cpp`）
+- 不要让它无差别浏览所有文件，避免 token 浪费和上下文偏移
+
 ### Git 提交准则
 - 只提交源代码（`.cpp`/`.h`/`.py`/`CMakeLists.txt`/`config/*.json`/`docs/*.md`/`AGENTS.md`）
 - 不提交构建产物（`build/`）、编译出的二进制（`main_ref_test`、`trigger3010`）、运行时文件（`runtime_config.json`、`.msm_session`）

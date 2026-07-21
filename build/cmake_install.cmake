@@ -45,6 +45,15 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/zkcx/ws/MSM_DAQ/build/module_core/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/extern/circular_buffer/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_daq/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_process/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_process_full/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_storage/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_simsource/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_main_v1/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_main_v2/cmake_install.cmake")
+  include("/home/zkcx/ws/MSM_DAQ/build/module_main_v3/cmake_install.cmake")
 
 endif()
 
