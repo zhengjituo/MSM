@@ -19,3 +19,6 @@ f67c8ea task 004: mark done
 ## Done
 
 ## 结束 commit
+```
+859e9fa remove: old msm/ framework (fully replaced by module_core)
+```
