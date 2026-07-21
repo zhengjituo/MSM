@@ -20,6 +20,5 @@ add_subdirectory(module_storage)
 add_subdirectory(module_simsource)
 
 # ── Main executables ──
-add_subdirectory(module_main_v1)   # msm_cli_simsrc  (V1 CLI + simsource)
-add_subdirectory(module_main_v2)   # msm_web_hwdaq   (V2 WebUI + hardware)
-add_subdirectory(module_main_v3)   # msm_cli_hwdaq   (V3 CLI + hardware + rec, 暂留)
+add_subdirectory(module_main_v1)   # msm_cli_simsrc (simsource+CLI), msm_cli_hwdaq (hwdaq+CLI)
+add_subdirectory(module_main_v2)   # msm_web_hwdaq  (hwdaq+WebUI)

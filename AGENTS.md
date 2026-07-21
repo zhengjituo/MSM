@@ -30,11 +30,13 @@ MSM_DAQ/
 ├── module_storage/          # 存盘模块
 ├── module_simsource/          # 虚拟数据源（仿真模式）
 │
-├── module_main_v1/          # msm_cli_simsrc  (V1 CLI + 仿真数据源)
-│   ├── main_simsrc.cpp
-│   └── (待建: main_hwdaq.cpp → msm_cli_hwdaq)
-├── module_main_v2/          # msm_web_hwdaq   (V2 WebUI + 硬件采集)
-│   ├── main_hwdaq.cpp
+├── module_main_v1/          # msm_cli_simsrc / msm_cli_hwdaq (V1 CLI)
+│   ├── main_simsrc.cpp      → msm_cli_simsrc
+│   ├── main_hwdaq.cpp       → msm_cli_hwdaq
+│   └── CMakeLists.txt
+├── module_main_v2/          # msm_web_simsrc / msm_web_hwdaq (V2 WebUI)
+│   ├── main_hwdaq.cpp       → msm_web_hwdaq
+│   ├── web/
 │   └── (待建: main_simsrc.cpp → msm_web_simsrc)
 ├── module_main_v3/          # (V3 暂留, 后续录盘整合入 V2)
 │
