@@ -20,3 +20,6 @@ b82fee4 task 003: mark done with ending commit hash
 ## Done
 
 ## 结束 commit
+```
+449987e reorg: move calculator+datachannel to module_core/tests/, rename module_sim→module_simsource
+```
