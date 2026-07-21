@@ -1,0 +1,2 @@
+add_library(user_circular_buffer STATIC user_circular_buffer.cpp)
+target_include_directories(user_circular_buffer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

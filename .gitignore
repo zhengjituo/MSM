@@ -3,12 +3,13 @@ build/
 module_core/build/
 module_datachannel/build/
 module_daq/build/
-module_main/build/
-module_main_full/build/
 module_process/build/
 module_process_full/build/
 module_storage/build/
 module_sim/build/
+module_main_v1/build/
+module_main_v2/build/
+module_main_v3/build/
 
 # Compiled test/utility binaries in source tree
 **/main_ref_test
