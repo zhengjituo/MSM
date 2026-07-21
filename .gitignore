@@ -14,6 +14,7 @@ module_main_v3/build/
 # Compiled test/utility binaries in source tree
 **/main_ref_test
 **/trigger3010
+**/build5
 
 # Object / archive / executables
 *.o
