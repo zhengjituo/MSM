@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MSM DAQ Hardware Control</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+h1 { color: #00d4ff; margin-bottom: 20px; font-weight: 300; font-size: 24px; display: flex; align-items: center; gap: 16px; }
+h2 { color: #00d4ff; font-size: 16px; font-weight: 500; margin-bottom: 12px; border-bottom: 1px solid #0f3460; padding-bottom: 8px; }
+.group-box { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 16px; display: inline-block; vertical-align: top; min-width: 280px; }
+.row { display: flex; align-items: center; margin-bottom: 6px; }
+.row label { width: 110px; color: #a0a0b0; font-size: 13px; flex-shrink: 0; }
+.row .value { flex: 1; text-align: right; }
+.ro-value { padding: 5px 8px; border-radius: 4px; font-size: 13px; background: #0a0a1a; border: 1px solid #1a3a5c; color: #4ae0a0; }
+.indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+.indicator.on { background: #4ae0a0; box-shadow: 0 0 8px #4ae0a0; }
+.indicator.off { background: #e04a4a; }
+.btn { padding: 8px 20px; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+.btn-start { background: #00d4ff; color: #1a1a2e; }
+.btn-start:hover { background: #00b8e6; }
+.btn-stop { background: #e04a4a; color: #fff; }
+.btn-startall { background: #4ae0a0; color: #1a1a2e; }
+.btn-stopall { background: #e04a4a; color: #fff; }
+.control-bar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.control-bar .sep { width: 1px; background: #0f3460; margin: 0 4px; }
+.status-bar { margin-top: 12px; font-size: 12px; color: #606080; display: flex; gap: 16px; align-items: center; }
+#toast { position: fixed; bottom: 20px; right: 20px; background: #0a0a1a; border: 1px solid #00d4ff; border-radius: 6px; padding: 10px 16px; font-size: 13px; color: #00d4ff; opacity: 0; transition: opacity .3s; pointer-events: none; }
+#toast.show { opacity: 1; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid #0f3460; }
+th { color: #a0a0b0; font-weight: 500; text-align: center; }
+td { color: #4ae0a0; }
+td:first-child, th:first-child { text-align: left; }
+</style>
+</head>
+<body>
+
+<h1>MSM DAQ Hardware <span id="liveStatus" style="font-size:13px;color:#606080">connecting...</span></h1>
+
+<div id="statusCards" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+  <div class="group-box" style="min-width:auto;padding:8px 16px;"><b>DAQ</b> <span id="ind_daq" class="indicator off"></span></div>
+  <div class="group-box" style="min-width:auto;padding:8px 16px;"><b>Process</b> <span id="ind_process" class="indicator off"></span></div>
+  <div class="group-box" style="min-width:auto;padding:8px 16px;"><b>Storage</b> <span id="ind_storage" class="indicator off"></span></div>
+  <div class="group-box" style="min-width:auto;padding:8px 16px;"><span id="fpsDisplay">0 fps</span></div>
+</div>
+
+<div class="group-box">
+  <h2>Channels</h2>
+  <table>
+    <thead><tr><th>Ch</th><th>Frames</th><th>Processed</th><th>Batches</th><th>TrigID</th><th>BunchID</th><th>Saved</th><th>Overflow</th></tr></thead>
+    <tbody id="chTable"></tbody>
+  </table>
+</div>
+
+<div class="control-bar">
+  <button class="btn btn-startall" onclick="startAll()">▶ Start All</button>
+  <button class="btn btn-stopall"  onclick="stopAll()">■ Stop All</button>
+  <div class="sep"></div>
+  <button class="btn btn-start" onclick="send('SaveEnable >> ->| Storage')">💾 Save ON</button>
+  <button class="btn btn-stop"  onclick="send('SaveDisable >> ->| Storage')">💾 Save OFF</button>
+</div>
+
+<div class="status-bar">
+  <span id="statusText">Connecting...</span>
+  <span id="updateTime"></span>
+</div>
+<div id="toast"></div>
+
+<script>
+const POLL_MS = 1000;
+let prevFrames = [0,0,0,0];
+let prevTime = Date.now();
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show';
+  setTimeout(() => t.className = '', 2000);
+}
+
+async function send(niStr) {
+  try {
+    const r = await fetch('/api/msg', { method: 'POST', body: niStr });
+    const j = await r.json();
+    toast(j.status);
+  } catch(e) {
+    toast('FAILED');
+  }
+}
+
+async function startAll() {
+  toast('Starting...');
+  await send('Start >> ->| DAQModule');
+  await new Promise(r => setTimeout(r, 100));
+  await send('Start >> ->| Process');
+  toast('All started');
+}
+
+async function stopAll() {
+  toast('Stopping...');
+  await send('Stop >> ->| DAQModule');
+  await new Promise(r => setTimeout(r, 100));
+  await send('Stop >> ->| Process');
+  toast('All stopped');
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/status');
+    const data = await r.json();
+    const now = Date.now();
+
+    document.getElementById('ind_daq').className = 'indicator ' + (data.daq_running ? 'on' : 'off');
+    document.getElementById('ind_process').className = 'indicator ' + (data.channels.some(c => c.processed > 0) ? 'on' : 'off');
+
+    const tbody = document.getElementById('chTable');
+    let html = '';
+    let total = 0;
+    for (let i = 0; i < data.nch; i++) {
+      const ch = data.channels[i] || {};
+      const frames = ch.frames || 0;
+      total += frames;
+      html += '<tr><td>CH' + (i+1) + '</td><td>' + frames.toLocaleString() + '</td>'
+           + '<td>' + (ch.processed || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.batches || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.trig_id || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.bunch_id || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.saved || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.overflow || 0) + '</td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    const dt = (now - prevTime) / 1000;
+    if (dt > 0 && prevFrames.length > 0) {
+      const fps = (total - prevFrames.reduce((a,b)=>a+b,0)) / dt;
+      document.getElementById('fpsDisplay').textContent = fps.toFixed(0) + ' fps';
+    }
+    prevFrames = data.channels.map(c => c.frames || 0);
+    prevTime = now;
+
+    document.getElementById('statusText').textContent = data.nch + 'ch';
+    document.getElementById('statusText').style.color = data.daq_running ? '#4ae0a0' : '#e04a4a';
+    document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('statusText').textContent = 'disconnected';
+    document.getElementById('statusText').style.color = '#e04a4a';
+  }
+}
+
+poll();
+setInterval(poll, POLL_MS);
+document.getElementById('liveStatus').textContent = 'polling ' + (POLL_MS/1000) + 's';
+</script>
+</body>
+</html>

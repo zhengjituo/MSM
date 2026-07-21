@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Lightweight REST bridge: reads /tmp/msm_live.json, forwards MSG via IPC."""
 import http.server
 import json
 import urllib.parse
 import os
 import socket
+from socketserver import ThreadingMixIn
 
 PORT = 8088
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,33 +44,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body.encode())
         elif path == "/" or path == "":
             try:
                 with open(os.path.join(SCRIPT_DIR, "e2e_dashboard.html"), "rb") as f:
                     body = f.read()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
+                self.end_headers()
                 self.wfile.write(body)
-                return
             except:
-                body = b"<html><body><h1>Not Found</h1></body></html>"
                 self.send_response(404)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"<html><body><h1>Not Found</h1></body></html>")
         else:
             body = json.dumps({"error": "not found"})
             self.send_response(404)
             self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        if isinstance(body, str):
-            body = body.encode()
-        self.wfile.write(body)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body.encode())
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode()
         if path == "/api/msg":
-            resp = send_ipc("MSG " + body)
+            cmd = body.strip().upper()
+            if cmd in ("QUIT", "EXIT", "RELOAD"):
+                resp = send_ipc(cmd)
+            else:
+                resp = send_ipc("MSG " + body)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
         else:
@@ -81,5 +88,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(resp.encode())
 
-print(f"REST bridge on http://localhost:{PORT}")
-http.server.HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    def log_message(self, format, *args):
+        http.server.BaseHTTPRequestHandler.log_message(self, format, *args)
+
+class ThreadedHTTPServer(ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+print(f"Threaded REST bridge on http://localhost:{PORT}")
+ThreadedHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

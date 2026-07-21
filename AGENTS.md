@@ -1,4 +1,13 @@
-# MSM 项目规范
+# MSM_DAQ 项目规范
+
+## Workflow（重要）
+
+**每次修改前先 git commit 备份当前状态**，以便随时回退。任何时候 AI 要修改源文件，人类应确认已经 commit 当前状态。
+
+提交准则：
+- 只提交源代码（`.cpp`/`.h`/`.py`/`CMakeLists.txt`/`config/*.json`/`docs/*.md`/`AGENTS.md`）
+- 不提交构建产物（`build/`）、编译出的二进制（`main_ref_test`、`trigger3010`）、运行时文件（`runtime_config.json`、`.msm_session`）
+- 提交信息简短描述做了什么
 
 ## 环境说明
 

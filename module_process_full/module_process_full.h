@@ -1,0 +1,84 @@
+#ifndef MSM_DAQ_MODULE_PROCESS_FULL_H
+#define MSM_DAQ_MODULE_PROCESS_FULL_H
+
+#include "Module.h"
+#include "user_circular_buffer.h"
+#include <atomic>
+#include <mutex>
+#include <cstdint>
+#include <vector>
+#include <array>
+#include <string>
+
+class ModuleProcessFull : public msm::Module {
+public:
+    static constexpr int MAX_CH = 16;
+
+    struct BatchFrameData {
+        std::vector<uint32_t> trig_id;
+        std::vector<uint64_t> bunch_id;
+        std::vector<uint32_t> sum;
+        std::vector<double> x;
+        std::vector<double> y;
+        std::vector<double> i;
+        int64_t batchNo = 0;
+        size_t count = 0;
+    };
+
+    ModuleProcessFull(const std::string& name,
+                      const std::vector<UserCircularBuffer*>& rings);
+    ~ModuleProcessFull();
+
+    void handleState(const msm::Message& msg) override;
+    void onIdle() override;
+    msm::ModuleVars* getVars() override;
+
+    int64_t getProcessedFrames(int ch) const;
+    int64_t getProcessedBatches(int ch) const;
+    int64_t getLastTrigId(int ch) const;
+    int64_t getLastBunchId(int ch) const;
+    int64_t getLastSum(int ch) const;
+    double  getLastX() const;
+    double  getLastY() const;
+    double  getLastI() const;
+
+    BatchFrameData getLastBatchData(int ch) const;
+    mutable std::mutex batchMutex_;
+
+    void setStorageTarget(const std::string& target);
+
+private:
+    void onConfigure(const msm::Json& data);
+    void onStart();
+    void onStop();
+    void onStatus(msm::Message& response);
+    void registerVars();
+
+    void doConsumeOnce();
+    void extractFrame(const uint8_t* frame, size_t flen, int ch, size_t idx);
+
+    std::vector<UserCircularBuffer*> rings_;
+    int nCh_ = 0;
+    std::array<std::atomic<int64_t>, MAX_CH> processedFrames_{};
+    std::array<std::atomic<int64_t>, MAX_CH> processedBatches_{};
+    std::array<std::atomic<uint64_t>, MAX_CH> lastWritePos_{};
+    std::array<int64_t, MAX_CH> lastPeekedReadPos_{};
+
+    std::atomic<bool> consuming_{false};
+    std::atomic<bool> emergencyStop_{false};
+
+    size_t batchSize_ = 10000;
+    std::string storageTarget_ = "Storage";
+
+    std::array<std::atomic<int64_t>, MAX_CH> lastTrigId_{};
+    std::array<std::atomic<int64_t>, MAX_CH> lastBunchId_{};
+    std::array<std::atomic<int64_t>, MAX_CH> lastSum_{};
+    std::array<std::atomic<double>, MAX_CH> lastX_{};
+    std::array<std::atomic<double>, MAX_CH> lastY_{};
+    std::array<std::atomic<double>, MAX_CH> lastI_{};
+
+    std::array<BatchFrameData, MAX_CH> batchData_;
+    std::vector<uint8_t> batchBuf_;
+};
+
+#endif

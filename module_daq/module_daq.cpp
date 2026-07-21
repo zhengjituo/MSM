@@ -57,9 +57,25 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
         if (!emergencyStop_.load())
             doReadOnce();
 
-    } else if (msg.cmd == "Configure") {
-        onConfigure(msg.data);
+    } else if (msg.cmd == "Init") {
+        onReadConfig(msg.data);
+        initHW();
+        updateConfig();
+    } else if (msg.cmd == "Configure" || msg.cmd == "ReadConfig") {
+        onReadConfig(msg.data);
+    } else if (msg.cmd == "InitHW") {
+        initHW();
+    } else if (msg.cmd == "UpdateConfig") {
+        updateConfig();
+
+    } else if (msg.cmd == "CloseHW") {
+        closeHW();
+
     } else if (msg.cmd == "Start") {
+        if (!hwReady_.load()) {
+            std::cerr << "[ModuleDAQ] HW not initialized, call InitHW first\n";
+            return;
+        }
         bool started = onStart();
         if (started) {
             msm::Message response("Response");
@@ -70,7 +86,7 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
         }
 
     } else if (msg.cmd == "Stop") {
-        onStop();
+        if (hwReady_.load()) onStop();
     } else if (msg.cmd == "Reset") {
         onReset();
     } else if (msg.cmd == "Status") {
@@ -82,7 +98,7 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
     }
 }
 
-void ModuleDAQ::onConfigure(const msm::Json& data) {
+void ModuleDAQ::onReadConfig(const msm::Json& data) {
     // 遍历 data map，按前缀拆解到 card/channel
     bool needRingCreate = false;
 
@@ -183,76 +199,48 @@ void ModuleDAQ::onConfigure(const msm::Json& data) {
     }
 }
 
-bool ModuleDAQ::onStart() {
-    if (acquiring_.load()) {
-        std::cerr << "[ModuleDAQ] Already running\n";
+// ── UpdateConfig：将 DAQ_Config 推送到硬件通道寄存器 ─────
+bool ModuleDAQ::updateConfig() {
+    if (!hwReady_.load()) {
+        std::cerr << "[ModuleDAQ] updateConfig skipped: HW not ready\n";
         return false;
     }
-
-    // ── 扫描硬件 ────────────────────────────────────────────
-    std::cout << "[ModuleDAQ] Initializing SDK...\n";
-    CxDeviceSetSdkOption("WithLog", "false");
-    CxDeviceSdkInit();
-
-    CxChassisHandle chassis = nullptr;
-    CxCardHandle* hwCards = nullptr;
-    uint32_t hwCount = 0;
-    CxDeviceGetChassis(PXIe, &chassis);
-    CxDeviceGetCards(chassis, &hwCards, &hwCount);
-    std::cout << "[ModuleDAQ] Found " << hwCount << " cards in chassis\n";
-
-    cards1073_.clear();
-    card3010_ = nullptr;
-    for (uint32_t i = 0; i < hwCount; i++) {
-        uint32_t did = 0;
-        CxDeviceGetCardDeviceId(hwCards[i], &did);
-        if (did == 0x1073)
-            cards1073_.push_back(hwCards[i]);
-        else if (did == 0x3010)
-            card3010_ = hwCards[i];
-    }
-    std::cout << "[ModuleDAQ] " << cards1073_.size() << " x 1073, "
-              << (card3010_ ? 1 : 0) << " x 3010\n";
-
-    // 按 slot 号升序排序（确保匹配顺序与物理槽位一致）
-    std::sort(cards1073_.begin(), cards1073_.end(), [](void* a, void* b) {
-        uint32_t sa = 0, sb = 0;
-        CxDeviceGetCardSlotNo(a, &sa);
-        CxDeviceGetCardSlotNo(b, &sb);
-        return sa < sb;
-    });
-
-    // ── 逐配置初始化 ────────────────────────────────────────
     activeChCount_ = 0;
-    int cardIdx = 0;
 
+    // ── 板卡级参数配置（每卡一次） ─────────────────────────
+    for (auto h : cards1073_) {
+        CxDeviceSetCardValue(h, "ClockSource", "0");
+        CxDeviceSetCardValue(h, "SyncWindowEnable", "0");
+        CxDeviceSetCardValue(h, "SyncSource", "0");
+    }
+    if (card3010_) {
+        CxDeviceSetCardValue(card3010_, "SyncTrigTrigMux", "2");
+        CxDeviceSetCardValue(card3010_, "SyncTrigGlbSync", "1");
+        CxDeviceSetCardValue(card3010_, "TrigSource", "2");
+        CxDeviceSetCardValue(card3010_, "SoftwareSync", "1");
+        std::cout << "[ModuleDAQ] 3010 card params set\n";
+    }
+
+    // ── 通道级参数配置 ─────────────────────────────────────
     for (const auto& cardCfg : config_.cards) {
         if (cardCfg.card_type != "1073") continue;
 
-        if (cardIdx >= (int)cards1073_.size()) {
-            std::cerr << "[ModuleDAQ] Not enough 1073 cards, remaining configs skipped\n";
-            break;
+        void* hCard = nullptr;
+        for (auto h : cards1073_) {
+            uint32_t slot = 0;
+            CxDeviceGetCardSlotNo(h, &slot);
+            if ((int)slot == cardCfg.slot) { hCard = h; break; }
         }
-        void* hCard = cards1073_[cardIdx++];
-
-        CxDeviceSetCard(hCard, "open");
-        CxDeviceSetCardValue(hCard, "ClockSource", "0");
-        CxDeviceSetCard(hCard, "init");
-        CxDeviceSetCardValue(hCard, "SyncWindowEnable", "0");
-        CxDeviceSetCardValue(hCard, "SyncSource", "0");
-        std::cout << "[ModuleDAQ] Card 1073 #" << cardIdx
-                  << " (config slot=" << cardCfg.slot << ") initializing\n";
+        if (!hCard) {
+            std::cerr << "[ModuleDAQ] Card slot " << cardCfg.slot << " not found\n";
+            continue;
+        }
+        std::cout << "[ModuleDAQ] Configuring 1073 slot=" << cardCfg.slot << "\n";
 
         for (const auto& chCfg : cardCfg.channels) {
-            if (!chCfg.runEnable) {
-                std::cout << "[ModuleDAQ]   ch" << chCfg.channel << " disabled\n";
-                continue;
-            }
-            if (activeChCount_ >= MAX_CH) {
-                std::cerr << "[ModuleDAQ]   ch" << chCfg.channel
-                          << " dropped (MAX_CH=" << MAX_CH << ")\n";
-                break;
-            }
+            if (!chCfg.runEnable) continue;
+            if (activeChCount_ >= MAX_CH) break;
+
             int ch = chCfg.channel;
             CxDeviceSetChannelValue(hCard, ch, "GlobalTrigEnable", "1");
             CxDeviceSetChannelValue(hCard, ch, "TrigSource", chCfg.trig_source.c_str());
@@ -277,11 +265,19 @@ bool ModuleDAQ::onStart() {
     }
 
     if (activeChCount_ == 0) {
-        std::cerr << "[ModuleDAQ] No active channels to start\n";
-        CxDeviceSdkDeinit();
+        std::cerr << "[ModuleDAQ] No active channels configured\n";
         return false;
     }
     std::cout << "[ModuleDAQ] " << activeChCount_ << " active channel(s)\n";
+    return true;
+}
+
+bool ModuleDAQ::onStart() {
+    bool expected = false;
+    if (!acquiring_.compare_exchange_strong(expected, true)) {
+        std::cerr << "[ModuleDAQ] Already running\n";
+        return false;
+    }
 
     // ── 启动接收 ────────────────────────────────────────────
     for (int i = 0; i < activeChCount_; i++) {
@@ -295,15 +291,9 @@ bool ModuleDAQ::onStart() {
     std::cout << "[ModuleDAQ] Settling 1073 (2s)...\n";
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    // ── 3010 trigger on + 标记采集 ─────────────────────────
-    if (card3010_) {
-        if (init3010()) {
-            setTriggerOutput(true);
-            std::cout << "[ModuleDAQ] 3010 trigger enabled\n";
-        }
-    } else {
-        std::cout << "[ModuleDAQ] No 3010 card, trigger not started\n";
-    }
+    // ── 3010 trigger ON ───────────────────────────────────────
+    setTriggerOutput(true);
+    std::cout << "[ModuleDAQ] 3010 trigger enabled\n";
 
     emergencyStop_ = false;
     acquiring_ = true;
@@ -321,21 +311,11 @@ void ModuleDAQ::onStop() {
         return;
     emergencyStop_ = true;
 
-    if (card3010_) {
-        setTriggerOutput(false);
-        std::cout << "[ModuleDAQ] 3010 trigger off, waiting 200ms...\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-
+    setTriggerOutput(false);
+    std::cout << "[ModuleDAQ] 3010 trigger off\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     flushAll();
-
-    if (card3010_) {
-        CxDeviceSetCard(card3010_, "close");
-        card3010_ = nullptr;
-        std::cout << "[ModuleDAQ] 3010 closed\n";
-    }
-
-    doCleanup();
+    stopChannels();
     std::cout << "[ModuleDAQ] Stopped\n";
 }
 
@@ -434,20 +414,99 @@ void ModuleDAQ::flushAll() {
     }
 }
 
-bool ModuleDAQ::init3010() {
-    if (!card3010_) return false;
+void ModuleDAQ::stopChannels() {
+    for (int i = 0; i < activeChCount_; i++) {
+        auto& slot = activeChannels_[i];
+        CxDeviceStopChannelRecv(slot.cardHandle, slot.ch);
+        CxDeviceSetChannel(slot.cardHandle, slot.ch, "stop");
+    }
+    activeChCount_ = 0;
+}
 
-    CxDeviceSetCard(card3010_, "open");
-    CxDeviceSetCard(card3010_, "init");
-    CxDeviceSetCardValue(card3010_, "SyncTrigTrigMux", "2");
-    CxDeviceSetCardValue(card3010_, "SyncTrigGlbSync", "1");
-    CxDeviceSetCardValue(card3010_, "TrigSource", "2");
-    CxDeviceSetCardValue(card3010_, "SoftwareSync", "1");
+// ── 硬件初始化（一次，含自检校准）─────────────────────────────
+bool ModuleDAQ::initHW() {
+    if (hwReady_.load()) {
+        std::cout << "[ModuleDAQ] Reload: closing cards for re-init...\n";
+        if (card3010_) {
+            CxDeviceSetCard(card3010_, "close");
+            card3010_ = nullptr;
+        }
+        for (auto h : cards1073_)
+            CxDeviceSetCard(h, "close");
+        cards1073_.clear();
+        // SDK 保持初始化，不重新 deinit/init
+    } else {
+        std::cout << "[ModuleDAQ] Initializing SDK...\n";
+        CxDeviceSetSdkOption("WithLog", "false");
+        if (CxDeviceSdkInit() != 0) {
+            std::cerr << "[ModuleDAQ] SDK init failed\n";
+            return false;
+        }
+    }
 
-    std::cout << "[ModuleDAQ] 3010 initialized\n";
+    CxChassisHandle chassis = nullptr;
+    CxCardHandle* hwCards = nullptr;
+    uint32_t hwCount = 0;
+    CxDeviceGetChassis(PXIe, &chassis);
+    CxDeviceGetCards(chassis, &hwCards, &hwCount);
+    std::cout << "[ModuleDAQ] Found " << hwCount << " cards in chassis\n";
+
+    cards1073_.clear();
+    card3010_ = nullptr;
+    for (uint32_t i = 0; i < hwCount; i++) {
+        uint32_t did = 0;
+        CxDeviceGetCardDeviceId(hwCards[i], &did);
+        if (did == 0x1073)
+            cards1073_.push_back(hwCards[i]);
+        else if (did == 0x3010)
+            card3010_ = hwCards[i];
+    }
+    std::cout << "[ModuleDAQ] " << cards1073_.size() << " x 1073, "
+              << (card3010_ ? 1 : 0) << " x 3010\n";
+
+    std::sort(cards1073_.begin(), cards1073_.end(), [](void* a, void* b) {
+        uint32_t sa = 0, sb = 0;
+        CxDeviceGetCardSlotNo(a, &sa);
+        CxDeviceGetCardSlotNo(b, &sb);
+        return sa < sb;
+    });
+
+    for (auto h : cards1073_) {
+        uint32_t slot = 0;
+        CxDeviceGetCardSlotNo(h, &slot);
+        CxDeviceSetCard(h, "open");
+        CxDeviceSetCard(h, "init");
+        std::cout << "[ModuleDAQ] 1073 slot=" << slot << " init OK\n";
+    }
+
+    if (card3010_) {
+        CxDeviceSetCard(card3010_, "open");
+        CxDeviceSetCard(card3010_, "init");
+        std::cout << "[ModuleDAQ] 3010 init OK\n";
+    }
+
+    hwReady_ = true;
     return true;
 }
 
+// ── 硬件关闭（进程退出时）─────────────────────────────────────
+bool ModuleDAQ::closeHW() {
+    if (!hwReady_.exchange(false)) return false;
+
+    if (card3010_) {
+        CxDeviceSetCard(card3010_, "close");
+        card3010_ = nullptr;
+    }
+    for (auto h : cards1073_)
+        CxDeviceSetCard(h, "close");
+    cards1073_.clear();
+
+    CxDeviceSdkDeinit();
+    std::cout << "[ModuleDAQ] HW closed\n";
+    return true;
+}
+
+// ── 3010 寄存器控制 ─────────────────────────────────────────
 bool ModuleDAQ::setTriggerOutput(bool enable) {
     if (!card3010_) return false;
     uint32_t val = enable ? 1 : 0;
@@ -457,24 +516,6 @@ bool ModuleDAQ::setTriggerOutput(bool enable) {
         return false;
     }
     return true;
-}
-
-void ModuleDAQ::doCleanup() {
-    if (cards1073_.empty()) return;
-
-    for (int i = 0; i < activeChCount_; i++) {
-        auto& slot = activeChannels_[i];
-        if (emergencyStop_.load()) break;
-        CxDeviceStopChannelRecv(slot.cardHandle, slot.ch);
-        CxDeviceSetChannel(slot.cardHandle, slot.ch, "stop");
-    }
-
-    for (auto h : cards1073_)
-        CxDeviceSetCard(h, "close");
-
-    CxDeviceSdkDeinit();
-    cards1073_.clear();
-    activeChCount_ = 0;
 }
 
 // ── DAQVars ─────────────────────────────────────────────────────

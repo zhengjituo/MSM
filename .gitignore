@@ -1,30 +1,55 @@
-# MSM Build outputs
+# ── Build outputs (all modules) ──
+build/
 module_core/build/
-module_core/build/*
-!module_core/build/.gitkeep
 module_datachannel/build/
-module_datachannel/build/*
+module_daq/build/
+module_main/build/
+module_main_full/build/
+module_process/build/
+module_process_full/build/
+module_storage/build/
+module_sim/build/
 
-# IDE files
-.vs/
-*.vcxproj.user
-*.suo
+# Compiled test/utility binaries in source tree
+**/main_ref_test
+**/trigger3010
 
-# Executables (for testing)
+# Object / archive / executables
+*.o
+*.a
+*.so
 *.exe
-*.pdb
-*.ilk
-
-# Library
 *.lib
 *.dll
-
-# Backup/cleanup
-backup/
+*.pdb
+*.ilk
+!**/*.a  # allow tracked static libs in extern/
 
 # External dependencies (user-provided, not committed)
 module_core/extern/epics/
 
-# Cache
+# IDE / editor
+.vs/
+.vscode/
+*.vcxproj.user
+*.suo
+*.swp
+*.swo
+
+# Cache / build system
 CMakeCache.txt
 CMakeFiles/
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Session / runtime
+.msm_session
+config/runtime_config.json
+
+# Backup
+backup/

@@ -212,6 +212,25 @@ std::string IPCServer::process(const std::string& line)
         return R"({"error":"empty"})";
     }
 
+    // QUIT — graceful shutdown
+    if (line.size() > 2) {
+        std::string upperLine = line;
+        std::transform(upperLine.begin(), upperLine.end(), upperLine.begin(), ::toupper);
+        if (upperLine == "QUIT" || upperLine == "EXIT") {
+            // Post a Quit message to MessageBus — main loop checks for it
+            Message quitMsg("Quit");
+            quitMsg.setTarget("Controller");
+            MessageBus::instance().send(quitMsg);
+            return "{\"OK\":\"quitting\"}";
+        }
+        if (upperLine == "RELOAD") {
+            Message reloadMsg("Reload");
+            reloadMsg.setTarget("Controller");
+            MessageBus::instance().send(reloadMsg);
+            return "{\"OK\":\"reload sent\"}";
+        }
+    }
+
     std::istringstream iss(line);
     std::string cmd, target, value;
     iss >> cmd >> target >> value;

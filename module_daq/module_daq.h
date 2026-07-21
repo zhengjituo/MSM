@@ -26,6 +26,7 @@ public:
     UserCircularBuffer* getRing(int idx);
     int getRingCount() const { return (int)rings_.size(); }
     bool isConfigured() const { return configured_.load(); }
+    bool isHwReady() const { return hwReady_.load(); }
 
     struct Stats {
         std::vector<int64_t> total_frames;
@@ -44,30 +45,33 @@ private:
         std::atomic<size_t> frameSize{0};
     };
 
-    void onConfigure(const msm::Json& data);
+    void onReadConfig(const msm::Json& data);
+    bool updateConfig();
     bool onStart();
     void onStop();
     void onReset();
     void onStatus(msm::Message& response);
 
+    bool initHW();
+    bool closeHW();
     void doReadOnce();
-    void doCleanup();
+    void stopChannels();
     void flushAll();
 
     std::vector<void*> cards1073_;
     void* card3010_ = nullptr;
     std::array<ChSlot, MAX_CH> activeChannels_;
     int activeChCount_ = 0;
+
+    bool setTriggerOutput(bool enable);
     std::vector<UserCircularBuffer*> rings_;
 
+    std::atomic<bool> hwReady_{false};
     std::atomic<bool> acquiring_{false};
     std::atomic<bool> emergencyStop_{false};
     std::atomic<bool> configured_{false};
 
     DaqConfig config_;
-
-    bool init3010();
-    bool setTriggerOutput(bool enable);
 
     struct DAQVars : msm::ModuleVars {
         void* get(const std::string& name) override;

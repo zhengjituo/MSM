@@ -87,6 +87,10 @@ void ModuleStorage::onConfigure(const msm::Json& data) {
 void ModuleStorage::onStart() {
     std::lock_guard<std::mutex> lock(fileMtx_);
     if (recording_.load()) return;
+    for (int i = 0; i < nCh_; i++) {
+        files_[i].framesSaved.store(0);
+        files_[i].bytesSaved.store(0);
+    }
     loadState();
     sessionId_++;
     openFiles();
