@@ -30,9 +30,13 @@ MSM_DAQ/
 ├── module_storage/          # 存盘模块
 ├── module_simsource/          # 虚拟数据源（仿真模式）
 │
-├── module_main_v1/          # main: 仿真模式（msm_daq_sim）
-├── module_main_v2/          # main: 硬件全功能 display（msm_daq_display）
-├── module_main_v3/          # main: 硬件采集存盘（msm_daq_storage）
+├── module_main_v1/          # msm_cli_simsrc  (V1 CLI + 仿真数据源)
+│   ├── main_simsrc.cpp
+│   └── (待建: main_hwdaq.cpp → msm_cli_hwdaq)
+├── module_main_v2/          # msm_web_hwdaq   (V2 WebUI + 硬件采集)
+│   ├── main_hwdaq.cpp
+│   └── (待建: main_simsrc.cpp → msm_web_simsrc)
+├── module_main_v3/          # (V3 暂留, 后续录盘整合入 V2)
 │
 ├── module_core/tests/
 │   ├── calculator/          # 框架 demo（AddModule/MultiplyModule, IPC 通信示例）
