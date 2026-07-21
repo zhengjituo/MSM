@@ -36,7 +36,6 @@ MSM_DAQ/
 │
 └── [旧残留]                  # 不纳入新结构，不删除
     ├── MSMvsEPICS*.md
-    ├── msm/                 # 旧版框架核心（已被 module_core 替代）
     └── ...
 ```
 
