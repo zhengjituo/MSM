@@ -31,4 +31,6 @@
 - 构建通过
 
 ## 结束 commit
-<!-- 完成后填写 -->
+```
+7df17a2 reorg: flat module structure, per-module CMakeLists.txt, workflow docs
+```
