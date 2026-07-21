@@ -8,8 +8,12 @@ MSM_DAQ/
 ├── .gitignore
 ├── CMakeLists.txt           # [可选] 根一键构建（add_subdirectory 各模块）
 │
-├── docs/                    # 架构设计文档
-│   └── *.md                 # 每模块同名 .md 设计说明
+├── docs/                    # 设计文档（详细索引见 docs/README.md）
+│   ├── README.md            # 目录索引 + 阅读优先级
+│   ├── arch/                # [P1] 框架架构（必读）
+│   ├── modules/             # [P2] 各模块设计
+│   ├── data_formats/        # [P3] 数据结构
+│   └── archive/             # [P4] 历史
 │
 ├── tasks/                   # 可追溯的 task 流水号 .md
 │   ├── 003_reorg_workflow.md
