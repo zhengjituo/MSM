@@ -44,5 +44,8 @@
 
 ## 结束 commit
 ```
-
+e1d2ba6 v1: V1 CLI stable milestone — user-driven start/stop, IPC shell, stop drain, ready signal
 ```
+
+## Tag
+`v1-cli-stable`
