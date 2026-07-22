@@ -31,7 +31,7 @@
 
 ## 结束 commit
 ```
-c1080ee fix: simsource as DAQModule, IPC shell bare commands, SIGPIPE handling
+5011506 merge: unify module_process and module_process_full
 ```
 
 ## Tag
