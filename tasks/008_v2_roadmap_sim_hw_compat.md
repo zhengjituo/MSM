@@ -30,7 +30,7 @@
 
 ## 结束 commit
 ```
-abcc580 v2: update roadmap — V2=Storage, V3=WebUI; main_simsrc aligns hwdaq
+c1080ee fix: simsource as DAQModule, IPC shell bare commands, SIGPIPE handling
 ```
 
 ## Tag
