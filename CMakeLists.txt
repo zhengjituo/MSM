@@ -22,3 +22,7 @@ add_subdirectory(module_simsource)
 # ── Main executables ──
 add_subdirectory(module_main_v1)   # msm_cli_simsrc (simsource+CLI), msm_cli_hwdaq (hwdaq+CLI)
 add_subdirectory(module_main_v2)   # msm_web_hwdaq  (hwdaq+WebUI)
+
+# ── TUI (可选) ──
+add_subdirectory(module_tui)
+add_subdirectory(module_main_v3)   # msm_tui_hwdaq  (hwdaq+TUI)

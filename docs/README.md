@@ -27,6 +27,12 @@
 |------|------|
 | `frame_format.md` | 物理帧结构：Header/Data/Trailer、TrigID、BunchID、Sim 模式帧生成 |
 
+## 当前版本状态（task 007）
+
+- **V1 CLI (module_main_v1)** — 稳定。用户手动 start/stop，IPC 交互，stop drain 完整，ready 信号明确
+  - `msm_cli_hwdaq` + `msm_ipc_shell` 配合验证
+- **V2 WebUI (module_main_v2)** — 开发中（下一阶段）
+
 ## P4 — archive/（历史/非核心）
 
 | 文件 | 内容 |

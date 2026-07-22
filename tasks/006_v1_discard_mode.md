@@ -7,9 +7,9 @@
 
 ## TODO
 - [x] 分析现状
-- [ ] V1 main: 去掉 `storage.start()` + `Start >> Storage` 消息
-- [ ] 编译验证
-- [ ] git commit
+- [x] V1 main: 去掉 `storage.start()` + `Start >> Storage` 消息
+- [x] 编译验证
+- [x] git commit
 
 ## 日志
 - process_full 已完成对齐检查，peek 全帧并打印第一帧 TrigID/BunchID ✅
@@ -22,3 +22,5 @@
 ```
 2d14a06 gitignore: exclude build5 artifacts, re-untrack
 ```
+
+> 续接 task 007：V1 CLI stable + IPC 交互

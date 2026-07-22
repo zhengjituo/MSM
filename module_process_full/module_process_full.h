@@ -26,7 +26,9 @@ public:
     };
 
     ModuleProcessFull(const std::string& name,
-                      const std::vector<UserCircularBuffer*>& rings);
+                      const std::vector<UserCircularBuffer*>& rings,
+                      UserCircularBuffer* saveRing = nullptr,
+                      const std::vector<int>& physChannels = {});
     ~ModuleProcessFull();
 
     void handleState(const msm::Message& msg) override;
@@ -35,6 +37,7 @@ public:
 
     int64_t getProcessedFrames(int ch) const;
     int64_t getProcessedBatches(int ch) const;
+    bool isConsuming() const { return consuming_.load(); }
     int64_t getLastTrigId(int ch) const;
     int64_t getLastBunchId(int ch) const;
     int64_t getLastSum(int ch) const;
@@ -51,6 +54,7 @@ private:
     void onConfigure(const msm::Json& data);
     void onStart();
     void onStop();
+    void onStopImmediate();
     void onStatus(msm::Message& response);
     void registerVars();
 
@@ -58,6 +62,8 @@ private:
     void extractFrame(const uint8_t* frame, size_t flen, int ch, size_t idx);
 
     std::vector<UserCircularBuffer*> rings_;
+    UserCircularBuffer* saveRing_ = nullptr;
+    std::vector<int> physChannels_;
     int nCh_ = 0;
     std::array<std::atomic<int64_t>, MAX_CH> processedFrames_{};
     std::array<std::atomic<int64_t>, MAX_CH> processedBatches_{};
@@ -66,6 +72,7 @@ private:
 
     std::atomic<bool> consuming_{false};
     std::atomic<bool> emergencyStop_{false};
+    std::atomic<bool> draining_{false};
 
     size_t batchSize_ = 10000;
     std::string storageTarget_ = "Storage";

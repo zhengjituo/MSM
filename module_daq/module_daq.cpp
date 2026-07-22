@@ -41,6 +41,7 @@ ModuleDAQ::Stats ModuleDAQ::getStats() const {
         s.total_frames.push_back(slot.totalFrames.load());
         s.overflow_count.push_back(slot.ring ? slot.ring->getOverflowCount() : 0);
         s.frame_size.push_back(slot.frameSize.load());
+        s.channel_ids.push_back(slot.ch);
     }
     return s;
 }
@@ -58,8 +59,11 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
             doReadOnce();
 
     } else if (msg.cmd == "Init") {
+        if (emergencyStop_.load()) emergencyStop_ = false;
         onReadConfig(msg.data);
-        initHW();
+        // reload: hw 已初始化，只需推送参数，不关闭重开
+        if (!hwReady_.load())
+            initHW();
         updateConfig();
     } else if (msg.cmd == "Configure" || msg.cmd == "ReadConfig") {
         onReadConfig(msg.data);
@@ -77,11 +81,11 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
             return;
         }
         bool started = onStart();
-        if (started) {
+        {
             msm::Message response("Response");
             response.setTarget(msg.getSender());
             response.setCorrelationId(msg.getCorrelationId());
-            response.data.set("status", "ok");
+            response.data.set("status", started ? "ok" : "error");
             msm::MessageBus::instance().send(response);
         }
 
@@ -268,7 +272,8 @@ bool ModuleDAQ::updateConfig() {
         std::cerr << "[ModuleDAQ] No active channels configured\n";
         return false;
     }
-    std::cout << "[ModuleDAQ] " << activeChCount_ << " active channel(s)\n";
+    std::cout << "[ModuleDAQ] " << activeChCount_ << " active channel(s)"
+              << "  init OK, ready for start\n";
     return true;
 }
 
@@ -279,6 +284,9 @@ bool ModuleDAQ::onStart() {
         return false;
     }
 
+    // 先关掉 acquiring_，避免启动过程中 doReadOnce 把旧数据写进 ring
+    acquiring_ = false;
+
     // ── 启动接收 ────────────────────────────────────────────
     for (int i = 0; i < activeChCount_; i++) {
         auto& slot = activeChannels_[i];
@@ -288,16 +296,19 @@ bool ModuleDAQ::onStart() {
         std::cout << "[ModuleDAQ] ch" << slot.ch << " (id=" << i << ") recv started\n";
     }
 
-    std::cout << "[ModuleDAQ] Settling 1073 (2s)...\n";
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
-    // ── 3010 trigger ON ───────────────────────────────────────
+    // ── 3010 trigger ON ────────────────────────────────────
     setTriggerOutput(true);
     std::cout << "[ModuleDAQ] 3010 trigger enabled\n";
 
     emergencyStop_ = false;
     acquiring_ = true;
     std::cout << "[ModuleDAQ] Acquiring (message-driven)\n";
+
+    // DAQ ready → start Process consumer from clean ring state
+    msm::Message startProcess("Start");
+    startProcess.setTarget("Process");
+    msm::MessageBus::instance().send(startProcess);
+
     return true;
 }
 
@@ -311,12 +322,17 @@ void ModuleDAQ::onStop() {
         return;
     emergencyStop_ = true;
 
+    // 先停触发 → 停通道 → flush 残帧进 ring → 再通知 Process drain
     setTriggerOutput(false);
     std::cout << "[ModuleDAQ] 3010 trigger off\n";
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    flushAll();
+
     stopChannels();
-    std::cout << "[ModuleDAQ] Stopped\n";
+    flushAll();
+
+    msm::Message stopProcess("Stop");
+    stopProcess.setTarget("Process");
+    msm::MessageBus::instance().send(stopProcess);
+    std::cout << "[ModuleDAQ] Stopped (DMA flushed, ring draining in Process)\n";
 }
 
 void ModuleDAQ::onReset() {
@@ -420,7 +436,6 @@ void ModuleDAQ::stopChannels() {
         CxDeviceStopChannelRecv(slot.cardHandle, slot.ch);
         CxDeviceSetChannel(slot.cardHandle, slot.ch, "stop");
     }
-    activeChCount_ = 0;
 }
 
 // ── 硬件初始化（一次，含自检校准）─────────────────────────────

@@ -30,9 +30,17 @@ static inline double readDoubleBE(const uint8_t* p) {
 }
 
 ModuleProcessFull::ModuleProcessFull(const std::string& name,
-                                     const std::vector<UserCircularBuffer*>& rings)
-    : Module(name), rings_(rings)
+                                     const std::vector<UserCircularBuffer*>& rings,
+                                     UserCircularBuffer* saveRing,
+                                     const std::vector<int>& physChannels)
+    : Module(name), rings_(rings), saveRing_(saveRing)
 {
+    if (!physChannels.empty())
+        physChannels_ = physChannels;
+    else
+        for (int i = 0; i < (int)rings.size(); i++)
+            physChannels_.push_back(i + 1);  // fallback: 1-based index
+
     nCh_ = (int)rings_.size();
     if (nCh_ > MAX_CH) {
         std::cerr << "[" << name_ << "] WARN: " << nCh_ << " rings > MAX_CH="
@@ -55,7 +63,7 @@ ModuleProcessFull::ModuleProcessFull(const std::string& name,
         batchData_[i].y.reserve(batchSize_);
         batchData_[i].i.reserve(batchSize_);
     }
-    idleDelayMs_ = 10;
+    idleDelayMs_ = 50;
     batchBuf_.resize(4096);
     registerVars();
 }
@@ -116,7 +124,7 @@ void ModuleProcessFull::setStorageTarget(const std::string& target) {
 }
 
 void ModuleProcessFull::onIdle() {
-    if (consuming_.load()) {
+    if (consuming_.load() || draining_.load()) {
         msm::Message consumeOnce("ConsumeOnce");
         post(consumeOnce);
     }
@@ -153,8 +161,9 @@ void ModuleProcessFull::onConfigure(const msm::Json& data) {
 
 void ModuleProcessFull::onStart() {
     emergencyStop_ = false;
+    draining_ = false;
     for (int i = 0; i < nCh_; i++) {
-        lastWritePos_[i].store(rings_[i] ? (int64_t)rings_[i]->getReadTotal() : 0);
+        lastWritePos_[i].store(rings_[i] ? rings_[i]->getWriteTotal() : 0);
         lastTrigId_[i].store(0);
         lastBunchId_[i].store(0);
         lastSum_[i].store(0);
@@ -170,10 +179,22 @@ void ModuleProcessFull::onStart() {
 
 void ModuleProcessFull::onStop() {
     consuming_ = false;
+    draining_ = true;
+    std::cout << "[" << name_ << "] Draining remaining frames...\n";
+    // keep doConsumeOnce running until ring is empty
+    // emergencyStop_ set by doConsumeOnce when drain completes
+}
+
+void ModuleProcessFull::onStopImmediate() {
+    consuming_ = false;
+    draining_ = false;
     emergencyStop_ = true;
     std::cout << "[" << name_ << "] Stopped";
-    for (int i = 0; i < nCh_; i++)
+    for (int i = 0; i < nCh_; i++) {
         std::cout << " ch" << (i + 1) << "=" << processedFrames_[i].load();
+        processedFrames_[i].store(0);
+        processedBatches_[i].store(0);
+    }
     std::cout << std::endl;
 }
 
@@ -217,7 +238,6 @@ void ModuleProcessFull::extractFrame(const uint8_t* frame, size_t flen, int ch, 
 
     uint32_t tid = readU32BE(frame + 17);
     const uint8_t* trailer = frame + flen - 64;
-    if (idx == 0) { std::cerr << "[HEX] ch" << (ch+1) << " trailer[0..7]: "; for (int _b=0; _b<8; _b++) std::cerr << std::hex << (int)((const uint8_t*)trailer)[_b] << " "; std::cerr << std::dec << "\n"; }
     uint64_t bid = readU48BE(trailer + 2);
     uint32_t sum = readU32BE(trailer + 8);
 
@@ -254,11 +274,43 @@ void ModuleProcessFull::doConsumeOnce() {
         uint64_t needed = (uint64_t)batchSize_ * (uint64_t)rings_[i]->getExpectedPacketSize();
         if (writeTotal - lastWrite < needed) { allReady = false; break; }
         if (rings_[i]->availableFrames() < batchSize_) { allReady = false; break; }
-        int64_t curRead = (int64_t)rings_[i]->getReadTotal();
-        if (curRead <= lastPeekedReadPos_[i]) { allReady = false; break; }
-
     }
-    if (!allReady) return;
+    if (!allReady) {
+        if (draining_.load()) {
+            bool allEmpty = true;
+            for (int i = 0; i < nCh_; i++) {
+                if (!rings_[i]) continue;
+                size_t avail = rings_[i]->availableFrames();
+                if (avail == 0) continue;
+                allEmpty = false;
+
+                size_t flen = rings_[i]->getExpectedPacketSize();
+                size_t readBytes = avail * flen;
+                if (batchBuf_.size() < readBytes)
+                    batchBuf_.resize(readBytes);
+
+                size_t got = rings_[i]->readData(batchBuf_.data(), readBytes);
+                if (got == 0) continue;
+
+                if (saveRing_) saveRing_->writeFromDevice(batchBuf_.data(), got);
+
+                size_t actualFrames = got / flen;
+                processedFrames_[i].fetch_add(actualFrames);
+                uint64_t lastWrite = lastWritePos_[i].load();
+                lastWritePos_[i].store(lastWrite + got);
+
+                int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
+                std::cout << "[" << name_ << "] ch" << chPhys
+                          << " drain=" << actualFrames << "\n";
+            }
+            if (allEmpty) {
+                draining_ = false;
+                emergencyStop_ = true;
+                std::cout << "[" << name_ << "] Drain complete, ready for start\n";
+            }
+        }
+        return;
+    }
 
     int64_t curBatch = processedBatches_[0].load() + 1;
 
@@ -268,77 +320,35 @@ void ModuleProcessFull::doConsumeOnce() {
         if (batchBuf_.size() < batchBytes)
             batchBuf_.resize(batchBytes);
 
-        size_t peeked = rings_[i]->peekData(batchBuf_.data(), batchBytes);
-        if (peeked < batchBytes) {
+        size_t got = rings_[i]->readData(batchBuf_.data(), batchBytes);
+        if (got < batchBytes) {
             std::cerr << "[" << name_ << "] ch" << (i + 1)
-                      << " peeked " << peeked << " < " << batchBytes << "\n";
+                      << " read " << got << " < " << batchBytes << "\n";
             continue;
         }
 
-        // Allocate batch data storage
-        {
-            std::lock_guard<std::mutex> lock(batchMutex_);
-            batchData_[i].trig_id.assign(batchSize_, 0);
-            batchData_[i].bunch_id.assign(batchSize_, 0);
-            batchData_[i].sum.assign(batchSize_, 0);
-            batchData_[i].x.assign(batchSize_, 0.0);
-            batchData_[i].y.assign(batchSize_, 0.0);
-            batchData_[i].i.assign(batchSize_, 0.0);
-            batchData_[i].batchNo = curBatch;
-            batchData_[i].count = 0;
+        // 转发原始数据到 storage_in_buffer（单 ring，多通道按 ch1..chN 顺序写入）
+        if (saveRing_) saveRing_->writeFromDevice(batchBuf_.data(), got);
+
+        size_t cnt = 0;
+        uint32_t firstTrigId = 0;
+        uint64_t firstBunchId = 0;
+        const uint8_t* firstFrame = batchBuf_.data();
+        if (firstFrame[0] == 0xEB && firstFrame[1] == 0x91 && flen >= 72) {
+            firstTrigId = readU32BE(firstFrame + 17);
+            const uint8_t* trailer = firstFrame + flen - 64;
+            firstBunchId = readU48BE(trailer + 2);
+            cnt = batchSize_;
         }
 
-        // Extract every frame
-        {
-            std::lock_guard<std::mutex> lock(batchMutex_);
-            for (size_t f = 0; f < batchSize_; f++) {
-                const uint8_t* frame = batchBuf_.data() + f * flen;
-                if (frame[0] != 0xEB || frame[1] != 0x91) continue;
-                extractFrame(frame, flen, i, f);
-                batchData_[i].count++;
-            }
-
-            std::cout << "[" << name_ << "] ch" << (i + 1)
-                      << " batch=" << curBatch
-                      << " t0=" << batchData_[i].trig_id[0]
-                      << " t1=" << batchData_[i].trig_id[1]
-                      << " t2=" << batchData_[i].trig_id[2]
-                      << " b0=" << batchData_[i].bunch_id[0]
-                      << " b1=" << batchData_[i].bunch_id[1]
-                      << " cnt=" << batchData_[i].count
-                      << "\n";
-        }
+        int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
+        std::cout << "[" << name_ << "] ch" << chPhys
+                  << " batch=" << curBatch
+                  << " trig_id=" << firstTrigId
+                  << " bunch_id=" << firstBunchId
+                  << " cnt=" << cnt
+                  << "\n";
     }
-
-    // Cross-channel alignment check: all channels must have same trig_id[0]
-    {
-        int64_t refTrig = batchData_[0].trig_id[0];
-        bool aligned = true;
-        for (int i = 1; i < nCh_; i++) {
-            if (batchData_[i].trig_id[0] != refTrig) {
-                std::cerr << "[" << name_ << "] MISALIGN ch" << (i+1) << " trig[0]="
-                          << batchData_[i].trig_id[0] << " != ch1=" << refTrig << ", discarding batch\n";
-                aligned = false;
-            }
-        }
-        if (!aligned) {
-            for (int i = 0; i < nCh_; i++) {
-                size_t flen = rings_[i]->getExpectedPacketSize();
-                size_t skipBytes = batchSize_ * flen;
-                std::vector<uint8_t> junk(skipBytes);
-                rings_[i]->readData(junk.data(), skipBytes);  // advance readTotal past this batch
-                lastWritePos_[i].store((int64_t)rings_[i]->getReadTotal());
-                lastPeekedReadPos_[i] = (int64_t)rings_[i]->getReadTotal() - 1;
-            }
-            return;
-        }
-    }
-
-    msm::Message save("SaveBatchAll");
-    save.data.set("nCh", std::to_string(nCh_));
-    save.data.set("batchSize", std::to_string(batchSize_));
-    save.setTarget(storageTarget_);
-    msm::MessageBus::instance().send(save);
 
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
@@ -347,6 +357,5 @@ void ModuleProcessFull::doConsumeOnce() {
         processedFrames_[i].fetch_add(batchSize_);
         processedBatches_[i].fetch_add(1);
         lastWritePos_[i].store(lastWrite + needed);
-        lastPeekedReadPos_[i] = (int64_t)rings_[i]->getReadTotal();
     }
 }

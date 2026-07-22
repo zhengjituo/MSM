@@ -96,7 +96,7 @@ void ModuleProcess::onConfigure(const msm::Json& data) {
 void ModuleProcess::onStart() {
     emergencyStop_ = false;
     for (int i = 0; i < nCh_; i++) {
-        lastWritePos_[i].store(0);
+        lastWritePos_[i].store(rings_[i] ? rings_[i]->getWriteTotal() : 0);
         lastTrigId_[i].store(0);
         lastBunchId_[i].store(0);
     }

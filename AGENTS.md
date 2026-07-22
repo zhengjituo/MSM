@@ -30,9 +30,10 @@ MSM_DAQ/
 ├── module_storage/          # 存盘模块
 ├── module_simsource/          # 虚拟数据源（仿真模式）
 │
-├── module_main_v1/          # msm_cli_simsrc / msm_cli_hwdaq (V1 CLI)
-│   ├── main_simsrc.cpp      → msm_cli_simsrc
-│   ├── main_hwdaq.cpp       → msm_cli_hwdaq
+├── module_main_v1/          # V1 CLI：用户命令驱动，IPC 可交互，无自动采集
+│   ├── main_simsrc.cpp      → msm_cli_simsrc（仿真）
+│   ├── main_hwdaq.cpp       → msm_cli_hwdaq（硬件）
+│   ├── msm_ipc_shell.cpp    → msm_ipc_shell（独立 IPC 终端）
 │   └── CMakeLists.txt
 ├── module_main_v2/          # msm_web_simsrc / msm_web_hwdaq (V2 WebUI)
 │   ├── main_hwdaq.cpp       → msm_web_hwdaq
@@ -69,6 +70,14 @@ MSM_DAQ/
 - 只提交源代码（`.cpp`/`.h`/`.py`/`CMakeLists.txt`/`config/*.json`/`docs/*.md`/`AGENTS.md`）
 - 不提交构建产物（`build/`）、编译出的二进制（`main_ref_test`、`trigger3010`）、运行时文件（`runtime_config.json`、`.msm_session`）
 - `.gitignore` 已排除上述内容
+
+### 当前版本状态
+- **V1 CLI（module_main_v1）**：稳定。用户手动 start/stop，quit 不卡住，IPC 支持 sendAndWait 响应
+  - 二进制：`msm_cli_hwdaq`（硬件）、`msm_cli_simsrc`（仿真）、`msm_ipc_shell`（IPC 终端）
+  - IPC 路径：`/tmp/msm_daq.sock`
+  - 命令：`start` / `stop` / `status` / `reload` / `quit`
+- **V2 WebUI（module_main_v2）**：开发中。Web GUI + IPC 控制，后续启用物理通道号和录盘
+- **V3 TUI（module_main_v3）**：规划中，终端 TUI
 
 ### 目录设计规则
 - 模块扁平化：`module_xxx/`，共享依赖在顶层

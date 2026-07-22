@@ -21,3 +21,6 @@ target_link_libraries(msm_cli_hwdaq
     user_circular_buffer
     CxDeviceCore xdma_api2 pthread
 )
+
+add_executable(msm_ipc_shell msm_ipc_shell.cpp)
+target_link_libraries(msm_ipc_shell pthread)

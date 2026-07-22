@@ -17,6 +17,11 @@ public:
     size_t availableFrames() const;
     size_t availableSpace() const;
 
+    void resetCounters() {
+        write_total_.store(0, std::memory_order_relaxed);
+        read_total_.store(0, std::memory_order_relaxed);
+        overflow_count_.store(0, std::memory_order_relaxed);
+    }
     bool hasOverflow() const { return overflow_count_.load(std::memory_order_relaxed) > 0; }
     size_t getOverflowCount() const { return overflow_count_.load(std::memory_order_relaxed); }
     void resetOverflow() { overflow_count_.store(0, std::memory_order_relaxed); }

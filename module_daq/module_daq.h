@@ -32,6 +32,7 @@ public:
         std::vector<int64_t> total_frames;
         std::vector<size_t> overflow_count;
         std::vector<size_t> frame_size;
+        std::vector<int> channel_ids;
         bool is_running = false;
     };
     Stats getStats() const;

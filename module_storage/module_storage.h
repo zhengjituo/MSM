@@ -14,10 +14,12 @@ class ModuleStorage : public msm::Module {
 public:
     static constexpr int MAX_CH = 16;
 
-    ModuleStorage(const std::vector<UserCircularBuffer*>& rings);
+    ModuleStorage(UserCircularBuffer* saveRing,
+                  const std::vector<int>& physChannels);
     ~ModuleStorage();
 
     void handleState(const msm::Message& msg) override;
+    void onIdle() override;
 
     int64_t getSavedFrames(int ch) const;
     int64_t getSavedBytes(int ch) const;
@@ -26,8 +28,6 @@ private:
     void onConfigure(const msm::Json& data);
     void onStart();
     void onStop();
-    void onSaveBatch(const msm::Message& msg);
-    void onSaveBatchAll(const msm::Message& msg);
     void onStatus(msm::Message& response);
     void registerVars();
 
@@ -39,7 +39,8 @@ private:
     void saveState();
     std::string formatFilePath(int ch, int seq) const;
 
-    std::vector<UserCircularBuffer*> rings_;
+    UserCircularBuffer* saveRing_ = nullptr;
+    std::vector<int> physChannels_;
     int nCh_ = 0;
     size_t batchSize_ = 10000;
 
@@ -62,6 +63,7 @@ private:
     std::string statePath_ = ".";
     int sessionId_ = 0;
     std::atomic<bool> recording_{false};
+    std::atomic<bool> draining_{false};
     std::mutex fileMtx_;
     std::vector<uint8_t> readBuf_;
 };

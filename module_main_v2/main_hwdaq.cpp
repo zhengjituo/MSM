@@ -218,7 +218,7 @@ int main() {
     controller->start();
 
     ModuleProcessFull process("Process", allRings);
-    ModuleStorage storage(allRings);
+    ModuleStorage storage(nullptr, {});
     msm::IPCServer ipc("/tmp/msm_daq.sock");
 
     bus.registerModule(&process);
@@ -282,26 +282,45 @@ int main() {
 
     std::cout << "[main] DAQ started: " << daq.getRingCount() << " rings\n";
     std::cout << "[main] Storage not started (recording disabled). Use Rec button in web GUI.\n";
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    send("Start >> -@ Process");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Process Start controlled by DAQ::onStart
     send("Start >> -@ DAQModule");
 
     std::cout << "[main] Running. IPC: /tmp/msm_daq.sock  Web: http://localhost:8080\n";
 
     writeLiveJSON(daq, process, storage);
+    int debugCnt = 0;
     while (!g_stop.load()) {
+        if (++debugCnt % 20 == 0) {
+            auto dstat = daq.getStats();
+            int n = std::max((int)dstat.total_frames.size(), daq.getRingCount());
+            for (int i = 0; i < n && i < 1; i++) {
+                auto* ring = daq.getRing(i);
+                if (ring) {
+                    uint64_t wt = ring->getWriteTotal();
+                    uint64_t rt = ring->getReadTotal();
+                    uint64_t cap = ring->getAlignCapacity();
+                    size_t af = ring->availableFrames();
+                    size_t flen = ring->getExpectedPacketSize();
+                    std::cout << "[DEBUG] ch" << (i+1)
+                              << " ring: wt=" << wt << " rt=" << rt
+                              << " cap=" << cap << " flen=" << flen
+                              << " availFrames=" << af
+                              << " procFrames=" << process.getProcessedFrames(i)
+                              << " procBatches=" << process.getProcessedBatches(i)
+                              << " consuming=" << (process.isConsuming() ? 1 : 0)
+                              << " acquired=" << (dstat.is_running ? 1 : 0)
+                              << "\n";
+                }
+            }
+        }
         if (g_reload.exchange(false)) {
             std::cout << "[main] Reloading config...\n";
-            send("Stop >> -@ DAQModule");
-            send("Stop >> -@ Process");
-            send("Stop >> -@ Storage");
+            send("Stop >> ->| Storage");
+            send("Stop >> ->| DAQModule");  // DAQ internally stops Process
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            distributeConfig();  // Init → onReadConfig + initHW(no-op) + updateConfig
+            distributeConfig();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            send("Start >> -@ Process");
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            send("Start >> -@ DAQModule");
+            send("Start >> -@ DAQModule");  // DAQ internally starts Process
             std::cout << "[main] Reload done\n";
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -310,8 +329,7 @@ int main() {
 
     std::cout << "\n[main] Shutting down...\n";
 
-    send("Stop >> -@ DAQModule");
-    send("Stop >> -@ Process");
+    send("Stop >> -@ DAQModule");  // DAQ internally stops Process
     send("Stop >> -@ Storage");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));

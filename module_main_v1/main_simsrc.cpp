@@ -228,7 +228,7 @@ int main() {
         allRings.push_back(sim.getRing(i));
 
     ModuleProcessFull process("Process", allRings);
-    ModuleStorage storage(allRings);
+    ModuleStorage storage(nullptr, {});
     auto controller = std::make_shared<ControllerModule>();
     bus.registerModule(controller.get());
     controller->start();

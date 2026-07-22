@@ -206,6 +206,10 @@ std::string IPCServer::process(const std::string& line)
         trim(niStr);
         if (!niStr.empty()) {
             msm::Message msg = NIStringParser::parse(niStr, "IPCServer");
+            if (msg.isAwaitResponse()) {
+                Message resp = MessageBus::instance().sendAndWait(msg, 1000);
+                return resp.data.dump();
+            }
             MessageBus::instance().send(msg);
             return "{\"OK\":\"sent\"}";
         }
@@ -228,6 +232,22 @@ std::string IPCServer::process(const std::string& line)
             reloadMsg.setTarget("Controller");
             MessageBus::instance().send(reloadMsg);
             return "{\"OK\":\"reload sent\"}";
+        }
+        if (upperLine == "START") {
+            Message p("Start"); p.setTarget("Process"); MessageBus::instance().send(p);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            Message d("Start"); d.setTarget("DAQModule"); MessageBus::instance().send(d);
+            return "{\"OK\":\"start sent\"}";
+        }
+        if (upperLine == "STOP") {
+            Message d("Stop"); d.setTarget("DAQModule"); MessageBus::instance().send(d);
+            Message p("Stop"); p.setTarget("Process"); MessageBus::instance().send(p);
+            return "{\"OK\":\"stop sent\"}";
+        }
+        if (upperLine == "STATUS") {
+            Message s("Status"); s.setTarget("DAQModule"); s.setAwaitResponse(true);
+            Message resp = MessageBus::instance().sendAndWait(s, 1000);
+            return resp.data.dump();
         }
     }
 

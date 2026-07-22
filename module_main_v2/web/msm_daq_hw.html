@@ -90,9 +90,9 @@ async function send(niStr) {
 
 async function startAll() {
   toast('Starting...');
-  await send('Start >> ->| DAQModule');
+  await send('Start >> -@ DAQModule');
   await new Promise(r => setTimeout(r, 100));
-  await send('Start >> ->| Process');
+  await send('SaveEnable >> ->| Storage');
   toast('All started');
 }
 
@@ -100,7 +100,7 @@ async function stopAll() {
   toast('Stopping...');
   await send('Stop >> ->| DAQModule');
   await new Promise(r => setTimeout(r, 100));
-  await send('Stop >> ->| Process');
+  await send('SaveDisable >> ->| Storage');
   toast('All stopped');
 }
 

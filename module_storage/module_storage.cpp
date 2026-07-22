@@ -6,19 +6,17 @@
 #include <cstring>
 #include <cerrno>
 
-ModuleStorage::ModuleStorage(const std::vector<UserCircularBuffer*>& rings)
-    : Module("Storage"), rings_(rings)
+ModuleStorage::ModuleStorage(UserCircularBuffer* saveRing,
+                             const std::vector<int>& physChannels)
+    : Module("Storage"), saveRing_(saveRing), physChannels_(physChannels)
 {
-    nCh_ = (int)rings_.size();
+    nCh_ = (int)physChannels.size();
     if (nCh_ > MAX_CH) {
-        std::cerr << "[Storage] WARN: " << nCh_ << " rings > MAX_CH="
+        std::cerr << "[Storage] WARN: " << nCh_ << " > MAX_CH="
                   << MAX_CH << ", truncating\n";
         nCh_ = MAX_CH;
     }
-    for (int i = 0; i < nCh_; i++) {
-        if (!rings_[i])
-            std::cerr << "[Storage] WARN: null ring[" << i << "]\n";
-    }
+    idleDelayMs_ = 50;
     readBuf_.resize(64U * 1024U * 1024U);
     registerVars();
     loadState();
@@ -39,9 +37,7 @@ int64_t ModuleStorage::getSavedBytes(int ch) const {
 }
 
 void ModuleStorage::handleState(const msm::Message& msg) {
-    if (msg.cmd == "SaveBatchAll") {
-        onSaveBatchAll(msg);
-    } else if (msg.cmd == "Configure") {
+    if (msg.cmd == "Configure") {
         onConfigure(msg.data);
     } else if (msg.cmd == "Start") {
         onStart();
@@ -84,6 +80,48 @@ void ModuleStorage::onConfigure(const msm::Json& data) {
               << " nCh=" << nCh_ << "\n";
 }
 
+void ModuleStorage::onIdle() {
+    if (!recording_.load() && !draining_.load()) return;
+    if (!saveRing_) return;
+
+    size_t batchBytes = batchSize_ * 384;  // per-channel batch size
+    size_t totalNeeded = (size_t)nCh_ * batchBytes;
+    size_t avail = saveRing_->availableDataSize();
+
+    if (avail < totalNeeded) {
+        // not enough data for a full multi-channel batch
+        if (draining_.load() && avail == 0) {
+            draining_ = false;
+            recording_ = false;
+            std::lock_guard<std::mutex> lock(fileMtx_);
+            closeFiles();
+            std::cout << "[Storage] Drain complete\n";
+        }
+        return;
+    }
+
+    if (readBuf_.size() < totalNeeded)
+        readBuf_.resize(totalNeeded);
+
+    size_t got = saveRing_->readData(readBuf_.data(), totalNeeded);
+    if (got < totalNeeded) return;
+
+    // split by channel, write each to its own file
+    for (int i = 0; i < nCh_; i++) {
+        const uint8_t* chData = readBuf_.data() + i * batchBytes;
+        int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
+        if (recording_.load() && files_[i].fp) {
+            fwrite(chData, 1, batchBytes, files_[i].fp);
+            files_[i].bytesWritten += batchBytes;
+            files_[i].framesSaved.fetch_add((int64_t)batchSize_);
+            files_[i].bytesSaved.fetch_add((int64_t)batchBytes);
+            if (maxSaveSizeMB_ > 0 &&
+                files_[i].bytesWritten >= maxSaveSizeMB_ * 1024ULL * 1024ULL)
+                rotateFile(i);
+        }
+    }
+}
+
 void ModuleStorage::onStart() {
     std::lock_guard<std::mutex> lock(fileMtx_);
     if (recording_.load()) return;
@@ -100,13 +138,12 @@ void ModuleStorage::onStart() {
 }
 
 void ModuleStorage::onStop() {
-    {
-        std::lock_guard<std::mutex> lock(fileMtx_);
-        recording_ = false;
-        closeFiles();
-    }
-    std::cout << "[Storage] Stopped\n";
+    // drain mode: process remaining saveRing data
+    draining_ = true;
+    std::cout << "[Storage] Draining remaining data...\n";
 }
+
+
 
 void ModuleStorage::onStatus(msm::Message& response) {
     response.data.set("recording", recording_.load() ? "true" : "false");
@@ -119,39 +156,7 @@ void ModuleStorage::onStatus(msm::Message& response) {
     }
 }
 
-void ModuleStorage::onSaveBatch(const msm::Message& msg) {
-    if (!recording_.load()) return;
-    int ch = 0;
-    if (msg.data.contains("ch"))
-        ch = msg.data.getInt("ch");
-    if (ch < 0 || ch >= nCh_ || !rings_[ch]) return;
-    size_t flen = rings_[ch]->getExpectedPacketSize();
-    size_t needed = batchSize_ * flen;
-    if (readBuf_.size() < needed)
-        readBuf_.resize(needed);
-    size_t got = rings_[ch]->readData(readBuf_.data(), needed);
-    if (got != needed) return;
-    writeToFile(ch, readBuf_.data(), batchSize_, flen);
-}
 
-void ModuleStorage::onSaveBatchAll(const msm::Message& msg) {
-    (void)msg;
-    bool save = recording_.load();
-    for (int i = 0; i < nCh_; i++) {
-        if (!rings_[i]) continue;
-        size_t flen = rings_[i]->getExpectedPacketSize();
-        size_t needed = batchSize_ * flen;
-        if (readBuf_.size() < needed)
-            readBuf_.resize(needed);
-        size_t got = rings_[i]->readData(readBuf_.data(), needed);
-        if (got != needed) {
-            std::cerr << "[Storage] ch" << (i + 1) << " read mismatch\n";
-            continue;
-        }
-        if (save)
-            writeToFile(i, readBuf_.data(), batchSize_, flen);
-    }
-}
 
 void ModuleStorage::writeToFile(int ch, const uint8_t* data,
                                  size_t frameCount, size_t frameSize)

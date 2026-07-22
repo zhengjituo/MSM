@@ -22,6 +22,7 @@ public:
 
     int64_t getProcessedFrames(int ch) const;
     int64_t getProcessedBatches(int ch) const;
+    bool isConsuming() const { return consuming_.load(); }
     int64_t getLastTrigId(int ch) const;
     int64_t getLastBunchId(int ch) const;
 
