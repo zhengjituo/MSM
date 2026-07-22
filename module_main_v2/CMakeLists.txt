@@ -7,7 +7,7 @@ target_link_directories(msm_web_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/module_core/ex
 target_link_directories(msm_web_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/sdk_include)
 target_link_libraries(msm_web_hwdaq
     module_daq
-    module_process_full
+    module_process
     module_storage
     msm_core
     user_circular_buffer

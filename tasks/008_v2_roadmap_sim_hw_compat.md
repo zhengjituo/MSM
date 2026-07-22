@@ -12,6 +12,7 @@
 - [x] simsource 注册名为 DAQModule，IPC 可控制
 - [x] msm_ipc_shell 发送裸命令 start/stop/status/reload
 - [x] SIGPIPE 处理
+- [x] 合并 module_process + module_process_full → 统一 module_process（全功能版）
 - [x] 编译验证 + 实测通过
 - [x] git commit
 

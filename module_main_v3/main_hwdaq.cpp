@@ -2,7 +2,7 @@
 #include "NIStringParser.h"
 #include "IPCServer.h"
 #include "module_daq.h"
-#include "module_process_full.h"
+#include "module_process.h"
 #include "module_storage.h"
 #include "daq_config.h"
 #include <httplib.h>
@@ -65,7 +65,7 @@ static void distributeConfig(bool isInit = true) {
 }
 
 static void printStatus(const ModuleDAQ& daq,
-                        const ModuleProcessFull& process,
+                        const ModuleProcess& process,
                         const ModuleStorage& storage) {
     ModuleDAQ::Stats s = daq.getStats();
     std::cout << "\n=== Status ===\n";
@@ -122,7 +122,7 @@ static void writeArray(std::ostream& os, const std::vector<double>& arr, size_t 
 static constexpr size_t JSON_MAX_ARRAY = 10000;
 
 static void writeLiveJSON(const ModuleDAQ& daq,
-                          const ModuleProcessFull& process,
+                          const ModuleProcess& process,
                           const ModuleStorage& storage) {
     ModuleDAQ::Stats dstat = daq.getStats();
     int nCh = dstat.total_frames.size() > 0 ? (int)dstat.total_frames.size() : daq.getRingCount();
@@ -217,7 +217,7 @@ int main() {
     bus.registerModule(controller.get());
     controller->start();
 
-    ModuleProcessFull process("Process", allRings);
+    ModuleProcess process("Process", allRings);
     ModuleStorage storage(nullptr, {});
     msm::IPCServer ipc("/tmp/msm_daq.sock");
 

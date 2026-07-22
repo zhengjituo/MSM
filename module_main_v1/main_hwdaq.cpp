@@ -2,7 +2,7 @@
 #include "NIStringParser.h"
 #include "IPCServer.h"
 #include "module_daq.h"
-#include "module_process_full.h"
+#include "module_process.h"
 #include "module_storage.h"
 #include "daq_config.h"
 #include <iostream>
@@ -70,7 +70,7 @@ static void loadConfig() {
 }
 
 static void printStatus(const ModuleDAQ& daq,
-                        const ModuleProcessFull& process,
+                        const ModuleProcess& process,
                         const ModuleStorage& storage) {
     ModuleDAQ::Stats s = daq.getStats();
     std::cout << "=== Status ==============================\n"
@@ -120,7 +120,7 @@ int main() {
     for (int i = 0; i < daq.getRingCount(); i++)
         allRings.push_back(daq.getRing(i));
 
-    ModuleProcessFull process("Process", allRings);
+    ModuleProcess process("Process", allRings);
     ModuleStorage storage(nullptr, {});
     bus.registerModule(&process);
     bus.registerModule(&storage);

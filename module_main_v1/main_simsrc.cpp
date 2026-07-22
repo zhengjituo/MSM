@@ -2,7 +2,7 @@
 #include "NIStringParser.h"
 #include "IPCServer.h"
 #include "module_simsource.h"
-#include "module_process_full.h"
+#include "module_process.h"
 #include "module_storage.h"
 #include "daq_config.h"
 #include <iostream>
@@ -62,7 +62,7 @@ static void loadConfig() {
 }
 
 static void printStatus(const ModuleSim& sim,
-                        const ModuleProcessFull& process,
+                        const ModuleProcess& process,
                         const ModuleStorage& storage) {
     ModuleSim::Stats s = sim.getStats();
     std::cout << "=== Status ==============================\n"
@@ -125,7 +125,7 @@ int main() {
     bus.registerModule(&ipc);
     ipc.start();
 
-    ModuleProcessFull process("Process", allRings);
+    ModuleProcess process("Process", allRings);
     ModuleStorage storage(nullptr, {});
     bus.registerModule(&process);
     bus.registerModule(&storage);

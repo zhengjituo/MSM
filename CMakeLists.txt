@@ -17,7 +17,6 @@ add_subdirectory(module_core)
 add_subdirectory(extern/circular_buffer)
 add_subdirectory(module_daq)
 add_subdirectory(module_process)
-add_subdirectory(module_process_full)
 add_subdirectory(module_storage)
 add_subdirectory(module_simsource)
 
