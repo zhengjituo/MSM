@@ -23,6 +23,7 @@ public:
 
     int64_t getSavedFrames(int ch) const;
     int64_t getSavedBytes(int ch) const;
+    bool isSaveEnabled() const { return saveEnabled_.load(); }
 
 private:
     void onConfigure(const msm::Json& data);

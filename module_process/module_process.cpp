@@ -1,5 +1,6 @@
 #include "module_process.h"
 #include "MessageBus.h"
+#include "NIStringParser.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -123,6 +124,11 @@ void ModuleProcess::setStorageTarget(const std::string& target) {
     storageTarget_ = target;
 }
 
+void ModuleProcess::setFrameIndex(int idx) {
+    frameIndex_ = idx;
+    std::cout << "[" << name_ << "] FrameIndex set to " << idx << "\n";
+}
+
 void ModuleProcess::onIdle() {
     if (consuming_.load() || draining_.load()) {
         msm::Message consumeOnce("ConsumeOnce");
@@ -147,6 +153,11 @@ void ModuleProcess::handleState(const msm::Message& msg) {
         response.setCorrelationId(msg.getCorrelationId());
         onStatus(response);
         msm::MessageBus::instance().send(response);
+    } else if (msg.cmd == "SetFrameIndex") {
+        int idx = 0;
+        if (msg.data.contains("index"))
+            idx = static_cast<int>(msg.data.getInt("index"));
+        setFrameIndex(idx);
     }
 }
 
@@ -341,6 +352,15 @@ void ModuleProcess::doConsumeOnce() {
         // 转发原始数据到 storage_in_buffer（单 ring，多通道按 ch1..chN 顺序写入）
         if (saveRing_) saveRing_->writeFromDevice(batchBuf_.data(), got);
 
+        // 提取用户所选 index 的帧
+        int selIdx = frameIndex_.load();
+        if (selIdx >= 0 && (size_t)selIdx < batchSize_) {
+            const uint8_t* frame = batchBuf_.data() + (size_t)selIdx * flen;
+            extractFrame(frame, flen, i, 0);
+            batchData_[i].count = 1;
+            batchData_[i].batchNo = curBatch;
+        }
+
         size_t cnt = 0;
         uint32_t firstTrigId = 0;
         uint64_t firstBunchId = 0;
@@ -368,5 +388,14 @@ void ModuleProcess::doConsumeOnce() {
         processedFrames_[i].fetch_add(batchSize_);
         processedBatches_[i].fetch_add(1);
         lastWritePos_[i].store(lastWrite + needed);
+    }
+
+    // 通知 WebUI 新 batch 就绪
+    {
+        std::string body = "BatchReady >> batchNo=" + std::to_string(curBatch)
+                         + ", nCh=" + std::to_string(nCh_)
+                         + " -@ WebUI";
+        msm::Message readyMsg = msm::NIStringParser::parse(body, name_);
+        msm::MessageBus::instance().send(readyMsg);
     }
 }

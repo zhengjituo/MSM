@@ -49,6 +49,8 @@ public:
     mutable std::mutex batchMutex_;
 
     void setStorageTarget(const std::string& target);
+    void setFrameIndex(int idx);
+    int  getFrameIndex() const { return frameIndex_.load(); }
 
 private:
     void onConfigure(const msm::Json& data);
@@ -86,6 +88,7 @@ private:
 
     std::array<BatchFrameData, MAX_CH> batchData_;
     std::vector<uint8_t> batchBuf_;
+    std::atomic<int> frameIndex_{0};
 };
 
 #endif
