@@ -78,19 +78,14 @@ int main(int argc, char** argv) {
                     sbuf_len = 0;
 
                     if (line.empty()) continue;
-                    if (line == "quit" || line == "exit") {
-                        std::string ni = "MSG Quit >> -@ Controller\n";
-                        write(fd, ni.data(), ni.size());
-                        stdin_done = true; pfds[0].fd = -1; break;
-                    }
-
                     std::string ni;
-                    if (line == "start")       ni = "start";
-                    else if (line == "stop")   ni = "stop";
-                    else if (line == "status") ni = "status";
-                    else if (line == "reload") ni = "reload";
+                    if (line == "quit" || line == "exit") ni = "quit";
+                    else if (line == "start")            ni = "start";
+                    else if (line == "stop")             ni = "stop";
+                    else if (line == "status")           ni = "status";
+                    else if (line == "reload")           ni = "reload";
                     else if (line.substr(0, 4) == "MSG ") ni = line;
-                    else                       ni = "MSG " + line;
+                    else                                 ni = "MSG " + line;
 
                     std::cout << ">> " << ni << "\n";
                     ni += '\n';
