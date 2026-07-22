@@ -314,6 +314,17 @@ void ModuleProcess::doConsumeOnce() {
 
     int64_t curBatch = processedBatches_[0].load() + 1;
 
+    // Check saveRing space before reading: need room for all channels
+    size_t totalNeeded = 0;
+    for (int i = 0; i < nCh_; i++) {
+        size_t flen = rings_[i]->getExpectedPacketSize();
+        totalNeeded += batchSize_ * flen;
+    }
+    if (saveRing_ && saveRing_->availableSpace() < totalNeeded) {
+        std::cout << "[" << name_ << "] saveRing full, skip cycle\n";
+        return;
+    }
+
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
         size_t batchBytes = batchSize_ * flen;

@@ -42,21 +42,27 @@ static void send(const std::string& niString) {
     msm::MessageBus::instance().send(msg);
 }
 
-static void distributeConfig() {
+static void sendDaqInit() {
     msm::Message daqMsg("Init");
     daqMsg.data.data = g_config.toKeyValues();
     daqMsg.setTarget("DAQModule");
     daqMsg.setSender("Main");
     msm::MessageBus::instance().send(daqMsg);
+}
 
+static void distributeConfig() {
     send("Configure >> BatchSize=10000, StorageTarget=Storage -@ Process");
     send("Configure >> SavePath=" + g_config.data_save_path
-         + ", FileName=" + g_config.file_name
+         + ", FelName=" + g_config.fel_name
+         + ", SystemName=" + g_config.system_name
+         + ", DeviceName=" + g_config.device_name
          + ", FileType=" + g_config.file_type
          + ", MaxSaveSizeMB=" + std::to_string(g_config.max_save_size_mb)
-         + ", RunId=" + std::to_string(g_config.run_id)
+         + ", ExpNo=" + std::to_string(g_config.exp_no)
+         + ", RunSerial=" + g_config.run_serial
          + ", BatchSize=10000"
-         + ", FilePathTemplate={savePath}/{fileName}_s{runId}_ch{ch}_{seq}.{fileType}"
+         + ", FrameSize=" + std::to_string(g_config.frame_size)
+         + ", Slot=" + std::to_string(g_config.slot)
          + " -@ Storage");
 }
 
@@ -82,6 +88,12 @@ static void printStatus(const ModuleDAQ& daq,
                   << "  proc_batches=" << process.getProcessedBatches(i)
                   << "\n";
     }
+    for (int i = 0; i < (int)s.total_frames.size() && i < 4; i++) {
+        std::cout << "  storage_ch" << (i + 1)
+                  << "_frames=" << storage.getSavedFrames(i)
+                  << "  bytes=" << storage.getSavedBytes(i)
+                  << "\n";
+    }
     std::cout << "=========================================\n" << std::endl;
 }
 
@@ -99,11 +111,6 @@ int main() {
     daq.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    std::vector<UserCircularBuffer*> allRings;
-    // 先创建 process/storage（ring 列表会在 InitHW 后填充）
-    // 但 ModuleDAQ 的 ring 在 Init 内部 ReadConfig 阶段分配
-    // 所以需要在 distributeConfig 之后收集 ring
-
     auto controller = std::make_shared<ControllerModule>();
     bus.registerModule(controller.get());
     controller->start();
@@ -112,27 +119,36 @@ int main() {
     bus.registerModule(&ipc);
     ipc.start();
 
-    // Init: ReadConfig → InitHW → UpdateConfig
-    distributeConfig();
+    // Init DAQ: ReadConfig → InitHW → UpdateConfig (rings allocated after this)
+    sendDaqInit();
     while (!daq.isConfigured())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    // 此时 ring 已分配
+
+    std::vector<UserCircularBuffer*> allRings;
     for (int i = 0; i < daq.getRingCount(); i++)
         allRings.push_back(daq.getRing(i));
 
-    ModuleProcess process("Process", allRings);
-    ModuleStorage storage(nullptr, {});
+    UserCircularBuffer saveRing(64 * 1024 * 1024, 4096);
+
+    std::vector<int> physCh;
+    for (int i = 0; i < daq.getRingCount(); i++)
+        physCh.push_back(i + 1);
+
+    ModuleProcess process("Process", allRings, &saveRing, physCh);
+    ModuleStorage storage(&saveRing, physCh);
     bus.registerModule(&process);
     bus.registerModule(&storage);
     process.start();
-    // Storage 不 start — recording_=false，discard 模式
+    storage.start();
+    distributeConfig();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     while (!daq.isHwReady())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     std::cout << "[main] DAQ ready: " << daq.getRingCount() << " rings\n";
 
-    std::cout << "[main] Running. Commands: start / stop / status / reload / quit\n";
+    std::cout << "[main] Running. Commands: start / stop / enablesave / disablesave / status / reload / quit\n";
 
     std::thread cli([&]() {
         std::string line;
@@ -143,6 +159,8 @@ int main() {
                 break;
             }
             if (line == "start") {
+                send("Start >> -@ Storage");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 send("Start >> -@ Process");
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 send("Start >> -@ DAQModule");
@@ -150,7 +168,18 @@ int main() {
             }
             if (line == "stop") {
                 send("Stop >> -@ DAQModule");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 send("Stop >> -@ Process");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                send("Stop >> -@ Storage");
+                continue;
+            }
+            if (line == "enablesave") {
+                send("EnableSave >> -@ Storage");
+                continue;
+            }
+            if (line == "disablesave") {
+                send("DisableSave >> -@ Storage");
                 continue;
             }
             if (line == "status") {
@@ -161,9 +190,12 @@ int main() {
                 std::cout << "[main] Reloading...\n";
                 send("Stop >> -@ DAQModule");
                 send("Stop >> -@ Process");
+                send("Stop >> -@ Storage");
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 loadConfig();
-                distributeConfig();  // Init: onReadConfig → updateConfig (跳过 initHW)
+                sendDaqInit();
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                distributeConfig();
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
                 continue;
@@ -178,8 +210,11 @@ int main() {
             std::cout << "[main] Reloading (via IPC)...\n";
             send("Stop >> -@ DAQModule");
             send("Stop >> -@ Process");
+            send("Stop >> -@ Storage");
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             loadConfig();
+            sendDaqInit();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             distributeConfig();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
@@ -190,11 +225,13 @@ int main() {
     std::cout << "\n[main] Shutting down...\n";
 
     send("Stop >> -@ DAQModule");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Stop >> -@ Process");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    send("Stop >> -@ Storage");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     send("CloseHW >> -@ DAQModule");
 
-    // 关闭 stdin 释放 CLI 线程的 getline 阻塞
     std::cin.setstate(std::ios::eofbit);
     close(STDIN_FILENO);
 

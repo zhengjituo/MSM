@@ -5,6 +5,14 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <cerrno>
+#include <ctime>
+#include <inttypes.h>
+#include <unistd.h>
+
+static inline uint32_t readU32BE(const uint8_t* p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8)  | (uint32_t)p[3];
+}
 
 ModuleStorage::ModuleStorage(UserCircularBuffer* saveRing,
                              const std::vector<int>& physChannels)
@@ -19,7 +27,6 @@ ModuleStorage::ModuleStorage(UserCircularBuffer* saveRing,
     idleDelayMs_ = 50;
     readBuf_.resize(64U * 1024U * 1024U);
     registerVars();
-    loadState();
 }
 
 ModuleStorage::~ModuleStorage() {
@@ -43,6 +50,10 @@ void ModuleStorage::handleState(const msm::Message& msg) {
         onStart();
     } else if (msg.cmd == "Stop") {
         onStop();
+    } else if (msg.cmd == "EnableSave") {
+        onEnableSave();
+    } else if (msg.cmd == "DisableSave") {
+        onDisableSave();
     } else if (msg.cmd == "Status") {
         msm::Message response("Response");
         response.setTarget(msg.getSender());
@@ -53,43 +64,39 @@ void ModuleStorage::handleState(const msm::Message& msg) {
 }
 
 void ModuleStorage::onConfigure(const msm::Json& data) {
-    if (data.contains("SavePath"))
-        savePath_ = data.get("SavePath");
-    if (data.contains("FileName"))
-        fileName_ = data.get("FileName");
-    if (data.contains("FileType"))
-        fileType_ = data.get("FileType");
-    if (data.contains("MaxSaveSizeMB"))
-        maxSaveSizeMB_ = static_cast<size_t>(data.getInt("MaxSaveSizeMB"));
-    if (data.contains("RunId"))
-        runId_ = data.getInt("RunId");
-    if (data.contains("StateDir"))
-        statePath_ = data.get("StateDir");
-    if (data.contains("BatchSize"))
-        batchSize_ = static_cast<size_t>(data.getInt("BatchSize"));
-    if (data.contains("FilePathTemplate"))
-        filePathTemplate_ = data.get("FilePathTemplate");
-    size_t maxFl = 1152;
-    size_t need = batchSize_ * maxFl;
+    if (data.contains("SavePath"))       savePath_ = data.get("SavePath");
+    if (data.contains("FelName"))        felName_ = data.get("FelName");
+    if (data.contains("SystemName"))     systemName_ = data.get("SystemName");
+    if (data.contains("DeviceName"))     deviceName_ = data.get("DeviceName");
+    if (data.contains("FileType"))       fileType_ = data.get("FileType");
+    if (data.contains("MaxSaveSizeMB"))  maxSaveSizeMB_ = data.getInt("MaxSaveSizeMB");
+    if (data.contains("ExpNo"))          expNo_ = data.getInt("ExpNo");
+    if (data.contains("RunSerial"))      runSerial_ = data.get("RunSerial");
+    if (data.contains("BatchSize"))      batchSize_ = data.getInt("BatchSize");
+    if (data.contains("FrameSize"))      frameSize_ = data.getInt("FrameSize");
+    if (data.contains("Slot"))           slot_ = data.getInt("Slot");
+    size_t need = (size_t)nCh_ * batchSize_ * frameSize_;
     if (readBuf_.size() < need)
         readBuf_.resize(need);
-    std::cout << "[Storage] Configured: path=" << savePath_
-              << " prefix=" << fileName_
-              << " maxMB=" << maxSaveSizeMB_
-              << " batch=" << batchSize_
-              << " nCh=" << nCh_ << "\n";
+    std::cout << "[Storage] Configured: " << buildDirPath()
+              << " batch=" << batchSize_ << " frame=" << frameSize_
+              << " maxMB=" << maxSaveSizeMB_ << " nCh=" << nCh_ << "\n";
 }
 
 void ModuleStorage::onIdle() {
-    if (!recording_.load() && !draining_.load()) return;
     if (!saveRing_) return;
 
-    size_t batchBytes = batchSize_ * 384;  // per-channel batch size
+    size_t batchBytes = batchSize_ * frameSize_;
     size_t totalNeeded = (size_t)nCh_ * batchBytes;
     size_t avail = saveRing_->availableDataSize();
 
+    if (!recording_.load() && !draining_.load()) {
+        if (avail >= totalNeeded && readBuf_.size() >= totalNeeded)
+            saveRing_->readData(readBuf_.data(), totalNeeded);
+        return;
+    }
+
     if (avail < totalNeeded) {
-        // not enough data for a full multi-channel batch
         if (draining_.load() && avail == 0) {
             draining_ = false;
             recording_ = false;
@@ -106,44 +113,110 @@ void ModuleStorage::onIdle() {
     size_t got = saveRing_->readData(readBuf_.data(), totalNeeded);
     if (got < totalNeeded) return;
 
-    // split by channel, write each to its own file
+    int64_t curBatch = files_[0].framesSaved.load() / (int64_t)batchSize_ + 1;
+
     for (int i = 0; i < nCh_; i++) {
         const uint8_t* chData = readBuf_.data() + i * batchBytes;
+        auto& f = files_[i];
         int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
-        if (recording_.load() && files_[i].fp) {
-            fwrite(chData, 1, batchBytes, files_[i].fp);
-            files_[i].bytesWritten += batchBytes;
-            files_[i].framesSaved.fetch_add((int64_t)batchSize_);
-            files_[i].bytesSaved.fetch_add((int64_t)batchBytes);
-            if (maxSaveSizeMB_ > 0 &&
-                files_[i].bytesWritten >= maxSaveSizeMB_ * 1024ULL * 1024ULL)
-                rotateFile(i);
+
+        uint32_t firstTrig = 0;
+        uint64_t firstBunch = 0;
+        size_t cnt = 0;
+        if (chData[0] == 0xEB && chData[1] == 0x91 && frameSize_ >= 72) {
+            firstTrig = readU32BE(chData + 17);
+            firstBunch = parseBunchID(chData, frameSize_);
+            cnt = batchSize_;
         }
+        std::cout << "[Storage] ch" << chPhys
+                  << " batch=" << curBatch
+                  << " trig_id=" << firstTrig
+                  << " bunch_id=" << firstBunch
+                  << " cnt=" << cnt
+                  << "\n";
+
+        if (!f.fp) continue;
+
+        if (!f.hasFirstBunch) {
+            f.firstBunchID = parseBunchID(chData, frameSize_);
+            f.hasFirstBunch = true;
+        }
+
+        const uint8_t* lastFrame = chData + (batchSize_ - 1) * frameSize_;
+        f.lastBunchID = parseBunchID(lastFrame, frameSize_);
+
+        size_t written = fwrite(chData, 1, batchBytes, f.fp);
+        if (written != batchBytes) {
+            std::cerr << "[Storage] ch" << (i + 1) << " write error: "
+                      << strerror(errno) << "\n";
+            continue;
+        }
+        f.bytesWritten += written;
+        f.framesSaved.fetch_add((int64_t)batchSize_);
+        f.bytesSaved.fetch_add((int64_t)written);
+    }
+
+    bool anyRotate = false;
+    size_t limitBytes = maxSaveSizeMB_ * 1024ULL * 1024ULL;
+    if (maxSaveSizeMB_ > 0) {
+        for (int i = 0; i < nCh_; i++) {
+            if (files_[i].bytesWritten >= limitBytes) {
+                anyRotate = true;
+                break;
+            }
+        }
+    }
+    if (anyRotate) {
+        std::lock_guard<std::mutex> lock(fileMtx_);
+        for (int i = 0; i < nCh_; i++)
+            rotateFile(i);
     }
 }
 
 void ModuleStorage::onStart() {
-    std::lock_guard<std::mutex> lock(fileMtx_);
-    if (recording_.load()) return;
     for (int i = 0; i < nCh_; i++) {
         files_[i].framesSaved.store(0);
         files_[i].bytesSaved.store(0);
+        files_[i].firstBunchID = 0;
+        files_[i].lastBunchID = 0;
+        files_[i].hasFirstBunch = false;
+        files_[i].sequence = 0;
+        files_[i].bytesWritten = 0;
     }
-    loadState();
-    sessionId_++;
-    openFiles();
-    recording_ = true;
-    saveState();
-    std::cout << "[Storage] Started (session " << sessionId_ << ")\n";
+    if (saveEnabled_.load() && nCh_ > 0) {
+        std::lock_guard<std::mutex> lock(fileMtx_);
+        std::string dir = buildDirPath();
+        ensureDir(dir);
+        for (int i = 0; i < nCh_ && i < MAX_CH; i++) {
+            auto& f = files_[i];
+            std::string path = buildTempPath(i, f.sequence);
+            f.fp = fopen(path.c_str(), "wb");
+            if (!f.fp)
+                std::cerr << "[Storage] Failed to open " << path << ": " << strerror(errno) << "\n";
+            else
+                std::cout << "[Storage] " << path << "\n";
+        }
+        recording_ = true;
+        std::cout << "[Storage] Started, recording\n";
+    } else {
+        std::cout << "[Storage] Started, save disabled, discarding\n";
+    }
+}
+
+void ModuleStorage::onEnableSave() {
+    saveEnabled_ = true;
+    std::cout << "[Storage] Save flag ON (applied at next start)\n";
+}
+
+void ModuleStorage::onDisableSave() {
+    saveEnabled_ = false;
+    std::cout << "[Storage] Save flag OFF (applied at next start)\n";
 }
 
 void ModuleStorage::onStop() {
-    // drain mode: process remaining saveRing data
     draining_ = true;
     std::cout << "[Storage] Draining remaining data...\n";
 }
-
-
 
 void ModuleStorage::onStatus(msm::Message& response) {
     response.data.set("recording", recording_.load() ? "true" : "false");
@@ -156,55 +229,30 @@ void ModuleStorage::onStatus(msm::Message& response) {
     }
 }
 
-
-
-void ModuleStorage::writeToFile(int ch, const uint8_t* data,
-                                 size_t frameCount, size_t frameSize)
-{
-    if (ch < 0 || ch >= MAX_CH) return;
-    size_t bytes = frameCount * frameSize;
-    std::lock_guard<std::mutex> lock(fileMtx_);
-    if (!recording_.load()) return;
-    auto& f = files_[ch];
-    if (!f.fp) return;
-    size_t written = fwrite(data, 1, bytes, f.fp);
-    if (written != bytes) {
-        std::cerr << "[Storage] ch" << (ch + 1)
-                  << " write error: " << strerror(errno) << "\n";
-        return;
-    }
-    f.bytesWritten += written;
-    f.framesSaved.fetch_add(frameCount);
-    f.bytesSaved.fetch_add(written);
-    if (f.bytesWritten >= maxSaveSizeMB_ * 1024U * 1024U)
-        rotateFile(ch);
-}
-
-void ModuleStorage::openFiles() {
-    mkdir(savePath_.c_str(), 0755);
-    for (int i = 0; i < nCh_ && i < MAX_CH; i++) {
-        auto& f = files_[i];
-        f.sequence = 0;
-        f.bytesWritten = 0;
-        std::string path = formatFilePath(i, f.sequence);
-        f.fp = fopen(path.c_str(), "wb");
-        if (!f.fp) {
-            std::cerr << "[Storage] Failed to open " << path
-                      << ": " << strerror(errno) << "\n";
-        } else {
-            std::cout << "[Storage] " << path << "\n";
-        }
-    }
-}
-
 void ModuleStorage::closeFiles() {
     for (int i = 0; i < MAX_CH; i++) {
         auto& f = files_[i];
-        if (f.fp) {
-            fclose(f.fp);
-            f.fp = nullptr;
+        if (!f.fp) continue;
+        fclose(f.fp);
+        f.fp = nullptr;
+        int ch = i;
+        if (f.framesSaved.load() > 0) {
+            std::string tmpPath = buildTempPath(ch, f.sequence);
+            std::string finalPath = buildFinalPath(ch, f.sequence,
+                f.hasFirstBunch ? f.firstBunchID : 0,
+                f.lastBunchID);
+            if (rename(tmpPath.c_str(), finalPath.c_str()) == 0)
+                std::cout << "[Storage] -> " << finalPath << "\n";
+            else
+                std::cerr << "[Storage] rename failed: " << strerror(errno) << "\n";
+        } else {
+            std::string tmpPath = buildTempPath(ch, f.sequence);
+            remove(tmpPath.c_str());
         }
         f.bytesWritten = 0;
+        f.firstBunchID = 0;
+        f.lastBunchID = 0;
+        f.hasFirstBunch = false;
     }
 }
 
@@ -214,60 +262,91 @@ void ModuleStorage::rotateFile(int ch) {
     if (!f.fp) return;
     fclose(f.fp);
     f.fp = nullptr;
+    std::string tmpPath = buildTempPath(ch, f.sequence);
+    std::string finalPath = buildFinalPath(ch, f.sequence,
+        f.hasFirstBunch ? f.firstBunchID : 0,
+        f.lastBunchID);
+    if (f.framesSaved.load() > 0) {
+        if (rename(tmpPath.c_str(), finalPath.c_str()) == 0)
+            std::cout << "[Storage] Rotate -> " << finalPath << "\n";
+        else
+            std::cerr << "[Storage] rename failed: " << strerror(errno) << "\n";
+    } else {
+        remove(tmpPath.c_str());
+    }
     f.sequence++;
     f.bytesWritten = 0;
-    std::string path = formatFilePath(ch, f.sequence);
-    f.fp = fopen(path.c_str(), "wb");
-    if (!f.fp) {
-        std::cerr << "[Storage] Rotate failed: " << path
-                  << ": " << strerror(errno) << "\n";
-    } else {
-        std::cout << "[Storage] Rotate -> " << path << "\n";
-    }
+    f.firstBunchID = 0;
+    f.lastBunchID = 0;
+    f.hasFirstBunch = false;
+    std::string newPath = buildTempPath(ch, f.sequence);
+    f.fp = fopen(newPath.c_str(), "wb");
+    if (!f.fp)
+        std::cerr << "[Storage] Rotate open failed: " << newPath << ": " << strerror(errno) << "\n";
+    else
+        std::cout << "[Storage] " << newPath << "\n";
 }
 
-void ModuleStorage::loadState() {
-    std::string path = statePath_ + "/.msm_session";
-    std::ifstream f(path);
-    if (!f.is_open()) { sessionId_ = 0; return; }
-    std::string line;
-    while (std::getline(f, line)) {
-        if (line.compare(0, 11, "session_id=") == 0)
-            sessionId_ = std::stoi(line.substr(11));
-    }
+std::string ModuleStorage::buildDirPath() const {
+    time_t t = time(nullptr);
+    struct tm lt; localtime_r(&t, &lt);
+    char dateBuf[16];
+    strftime(dateBuf, sizeof(dateBuf), "%Y%m%d", &lt);
+
+    std::string path = savePath_ + "/" + felName_
+        + "/" + systemName_ + "/" + deviceName_
+        + "/" + dateBuf + "/" + runSerial_
+        + "/card" + std::to_string(slot_);
+    return path;
 }
 
-void ModuleStorage::saveState() {
-    std::string path = statePath_ + "/.msm_session";
-    std::ofstream f(path);
-    if (!f.is_open()) {
-        std::cerr << "[Storage] Cannot write " << path << "\n";
-        return;
-    }
-    f << "session_id=" << sessionId_ << "\n";
+std::string ModuleStorage::buildTempPath(int ch, int seq) const {
+    char expBuf[16], seqBuf[16];
+    snprintf(expBuf, sizeof(expBuf), "%05d", expNo_);
+    snprintf(seqBuf, sizeof(seqBuf), "%05d", seq);
+    int physCh = (ch < (int)physChannels_.size()) ? physChannels_[ch] : (ch + 1);
+    return buildDirPath() + "/RAW-R" + expBuf
+        + "-" + systemName_ + "-" + deviceName_
+        + "-Channel" + std::to_string(physCh)
+        + "-S" + seqBuf + ".tmp";
 }
 
-std::string ModuleStorage::formatFilePath(int ch, int seq) const {
-    std::string result = filePathTemplate_;
-    auto replace = [&](const std::string& key, const std::string& val) {
-        size_t pos;
-        while ((pos = result.find(key)) != std::string::npos)
-            result.replace(pos, key.size(), val);
-    };
-    replace("{savePath}", savePath_);
-    replace("{fileName}", fileName_);
-    replace("{fileType}", fileType_);
-    replace("{runId}", std::to_string(runId_));
-    replace("{session}", std::to_string(sessionId_));
-    replace("{ch}", std::to_string(ch + 1));
-    replace("{seq}", std::to_string(seq));
-    return result;
+std::string ModuleStorage::buildFinalPath(int ch, int seq,
+                                          uint64_t firstB, uint64_t lastB) const {
+    char expBuf[16], seqBuf[16], firstBBuf[16], lastBBuf[16];
+    snprintf(expBuf, sizeof(expBuf), "%05d", expNo_);
+    snprintf(seqBuf, sizeof(seqBuf), "%05d", seq);
+    snprintf(firstBBuf, sizeof(firstBBuf), "%014" PRIu64, firstB);
+    snprintf(lastBBuf, sizeof(lastBBuf), "%014" PRIu64, lastB);
+    int physCh = (ch < (int)physChannels_.size()) ? physChannels_[ch] : (ch + 1);
+    return buildDirPath() + "/RAW-R" + expBuf
+        + "-" + systemName_ + "-" + deviceName_
+        + "-Channel" + std::to_string(physCh)
+        + "-B" + firstBBuf + "-B" + lastBBuf
+        + "-S" + seqBuf + "." + fileType_;
+}
+
+void ModuleStorage::ensureDir(const std::string& path) const {
+    size_t pos = 0;
+    while ((pos = path.find_first_of('/', pos + 1)) != std::string::npos) {
+        std::string sub = path.substr(0, pos);
+        mkdir(sub.c_str(), 0755);
+    }
+    // Also create the final directory component if path doesn't end with /
+    if (!path.empty() && path.back() != '/')
+        mkdir(path.c_str(), 0755);
+}
+
+uint64_t ModuleStorage::parseBunchID(const uint8_t* frame, size_t flen) const {
+    const uint8_t* trailer = frame + flen - 64;
+    return ((uint64_t)trailer[2] << 40) | ((uint64_t)trailer[3] << 32)
+         | ((uint64_t)trailer[4] << 24) | ((uint64_t)trailer[5] << 16)
+         | ((uint64_t)trailer[6] << 8)  | trailer[7];
 }
 
 void ModuleStorage::registerVars() {
     declareVar("recording", recording_);
     declareVar("save_path", savePath_);
-    declareVar("run_id", runId_);
     int maxCh = nCh_ > 0 ? nCh_ : MAX_CH;
     for (int i = 0; i < maxCh; i++) {
         std::string idx = std::to_string(i + 1);

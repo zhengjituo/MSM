@@ -136,6 +136,16 @@ bool DaqConfig::loadFromJsonString(const std::string& json) {
         pv_info_freq_hz = findInt(app, "pvInfoUpdateFreHz", 2);
         run_id = findInt(app, "runId", 234);
         start_storage = findValue(app, "startStorage") == "true";
+        fel_name = findValue(app, "felName");
+        if (fel_name.empty()) fel_name = "fel1";
+        system_name = findValue(app, "systemName");
+        if (system_name.empty()) system_name = "HSS";
+        device_name = findValue(app, "deviceName");
+        if (device_name.empty()) device_name = "PD";
+        exp_no = findInt(app, "expNo", 1);
+        run_serial = findValue(app, "runSerial");
+        if (run_serial.empty()) run_serial = "r00001";
+        frame_size = (size_t)findInt(app, "frameSize", 1152);
     }
 
     // --- DaqParameter ---
@@ -212,6 +222,10 @@ bool DaqConfig::loadFromJsonString(const std::string& json) {
 
         cards.push_back(card);
     }
+
+    // Derive slot from first card
+    if (slot == 0 && !cards.empty())
+        slot = cards[0].slot;
 
     std::cout << "[DaqConfig] loaded " << cards.size() << " card(s)\n";
     for (const auto& c : cards) {
@@ -329,7 +343,13 @@ bool DaqConfig::saveToJson(const std::string& path) const {
     f << "        \"maxSaveSizeMB\": " << max_save_size_mb << ",\n";
     f << "        \"pvInfoUpdateFreHz\": " << pv_info_freq_hz << ",\n";
     f << "        \"runId\": " << run_id << ",\n";
-    f << "        \"startStorage\": " << (start_storage ? "true" : "false") << "\n";
+    f << "        \"startStorage\": " << (start_storage ? "true" : "false") << ",\n";
+    f << "        \"felName\": \"" << fel_name << "\",\n";
+    f << "        \"systemName\": \"" << system_name << "\",\n";
+    f << "        \"deviceName\": \"" << device_name << "\",\n";
+    f << "        \"expNo\": " << exp_no << ",\n";
+    f << "        \"runSerial\": \"" << run_serial << "\",\n";
+    f << "        \"frameSize\": " << frame_size << "\n";
     f << "    }\n";
     f << "}\n";
 
@@ -343,6 +363,13 @@ std::map<std::string, std::string> DaqConfig::toKeyValues() const {
     // 全局参数
     kv["ChassisNo"] = std::to_string(chassis_no);
     kv["CardCount"] = std::to_string(cards.size());
+    kv["FelName"] = fel_name;
+    kv["SystemName"] = system_name;
+    kv["DeviceName"] = device_name;
+    kv["ExpNo"] = std::to_string(exp_no);
+    kv["RunSerial"] = run_serial;
+    kv["Slot"] = std::to_string(slot);
+    kv["FrameSize"] = std::to_string(frame_size);
 
     // 逐卡、逐通道
     for (size_t ci = 0; ci < cards.size(); ci++) {

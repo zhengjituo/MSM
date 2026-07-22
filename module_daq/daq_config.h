@@ -94,6 +94,15 @@ struct DaqConfig {
     int run_id = 234;
     bool start_storage = false;
 
+    // Storage V2 fields
+    std::string fel_name = "fel1";
+    std::string system_name = "HSS";
+    std::string device_name = "PD";
+    int exp_no = 1;
+    std::string run_serial = "r00001";
+    int slot = 0;
+    size_t frame_size = 1152;
+
     bool loadFromJson(const std::string& path);
     bool loadFromJsonString(const std::string& json);
     bool saveToJson(const std::string& path) const;

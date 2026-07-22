@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     if (fd < 0) return 1;
 
     std::cout << "Connected to " << sock_path << "\n"
-              << "Commands: start  stop  status  reload  quit  <any MSG string>\n";
+              << "Commands: start  stop  enablesave  disablesave  status  reload  quit  <any MSG string>\n";
 
     std::string rbuf;             // partial receive buffer
     bool eof = false;
@@ -84,6 +84,8 @@ int main(int argc, char** argv) {
                     else if (line == "stop")             ni = "stop";
                     else if (line == "status")           ni = "status";
                     else if (line == "reload")           ni = "reload";
+                    else if (line == "enablesave")       ni = "enablesave";
+                    else if (line == "disablesave")      ni = "disablesave";
                     else if (line.substr(0, 4) == "MSG ") ni = line;
                     else                                 ni = "MSG " + line;
 

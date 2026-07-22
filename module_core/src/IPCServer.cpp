@@ -234,6 +234,8 @@ std::string IPCServer::process(const std::string& line)
             return "{\"OK\":\"reload sent\"}";
         }
         if (upperLine == "START") {
+            Message s("Start"); s.setTarget("Storage"); MessageBus::instance().send(s);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             Message p("Start"); p.setTarget("Process"); MessageBus::instance().send(p);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             Message d("Start"); d.setTarget("DAQModule"); MessageBus::instance().send(d);
@@ -241,8 +243,19 @@ std::string IPCServer::process(const std::string& line)
         }
         if (upperLine == "STOP") {
             Message d("Stop"); d.setTarget("DAQModule"); MessageBus::instance().send(d);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             Message p("Stop"); p.setTarget("Process"); MessageBus::instance().send(p);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            Message s("Stop"); s.setTarget("Storage"); MessageBus::instance().send(s);
             return "{\"OK\":\"stop sent\"}";
+        }
+        if (upperLine == "ENABLESAVE") {
+            Message s("EnableSave"); s.setTarget("Storage"); MessageBus::instance().send(s);
+            return "{\"OK\":\"enablesave sent\"}";
+        }
+        if (upperLine == "DISABLESAVE") {
+            Message s("DisableSave"); s.setTarget("Storage"); MessageBus::instance().send(s);
+            return "{\"OK\":\"disablesave sent\"}";
         }
         if (upperLine == "STATUS") {
             Message s("Status"); s.setTarget("DAQModule"); s.setAwaitResponse(true);
