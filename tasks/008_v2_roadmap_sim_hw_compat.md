@@ -23,5 +23,8 @@
 
 ## 结束 commit
 ```
-
+abcc580 v2: update roadmap — V2=Storage, V3=WebUI; main_simsrc aligns hwdaq
 ```
+
+## Tag
+`v2-roadmap`
