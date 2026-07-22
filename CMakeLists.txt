@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(MSM_DAQ LANGUAGES CXX)
 
+cmake_policy(SET CMP0079 NEW)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -23,6 +25,4 @@ add_subdirectory(module_simsource)
 add_subdirectory(module_main_v1)   # msm_cli_simsrc (simsource+CLI), msm_cli_hwdaq (hwdaq+CLI)
 add_subdirectory(module_main_v2)   # msm_web_hwdaq  (hwdaq+WebUI)
 
-# ── TUI (可选) ──
-add_subdirectory(module_tui)
-add_subdirectory(module_main_v3)   # msm_tui_hwdaq  (hwdaq+TUI)
+add_subdirectory(module_main_v3)   # msm_web_v3  (V3 WebUI，从 V2 备份起步)

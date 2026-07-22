@@ -35,12 +35,12 @@ MSM_DAQ/
 │   ├── main_hwdaq.cpp       → msm_cli_hwdaq（硬件）
 │   ├── msm_ipc_shell.cpp    → msm_ipc_shell（独立 IPC 终端）
 │   └── CMakeLists.txt
-├── module_main_v2/          # msm_web_simsrc / msm_web_hwdaq (V2 WebUI)
+├── module_main_v2/          # V2 Storage 保存文件（开发中）
+│   ├── main_hwdaq.cpp       → msm_web_hwdaq（即将改为 storage 版本）
+│   └── web/
+├── module_main_v3/          # V3 WebUI（从 V2 WebUI 备份起步）
 │   ├── main_hwdaq.cpp       → msm_web_hwdaq
-│   ├── web/
-│   └── (待建: main_simsrc.cpp → msm_web_simsrc)
-├── module_main_v3/          # (V3 暂留, 后续录盘整合入 V2)
-│
+│   └── web/
 ├── module_core/tests/
 │   ├── calculator/          # 框架 demo（AddModule/MultiplyModule, IPC 通信示例）
 │   └── datachannel/         # 跨进程 DataChannel 测试
@@ -72,12 +72,12 @@ MSM_DAQ/
 - `.gitignore` 已排除上述内容
 
 ### 当前版本状态
-- **V1 CLI（module_main_v1）**：稳定。用户手动 start/stop，quit 不卡住，IPC 支持 sendAndWait 响应
+- **V1 CLI（module_main_v1）** — 稳定。用户手动 start/stop，IPC 交互
   - 二进制：`msm_cli_hwdaq`（硬件）、`msm_cli_simsrc`（仿真）、`msm_ipc_shell`（IPC 终端）
   - IPC 路径：`/tmp/msm_daq.sock`
   - 命令：`start` / `stop` / `status` / `reload` / `quit`
-- **V2 WebUI（module_main_v2）**：开发中。Web GUI + IPC 控制，后续启用物理通道号和录盘
-- **V3 TUI（module_main_v3）**：规划中，终端 TUI
+- **V2 Storage（module_main_v2）** — 开发中。加入保存文件功能，启用物理通道号和录盘
+- **V3 WebUI（module_main_v3）** — 规划中。Web GUI 界面
 
 ### 目录设计规则
 - 模块扁平化：`module_xxx/`，共享依赖在顶层

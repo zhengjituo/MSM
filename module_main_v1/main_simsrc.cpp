@@ -12,8 +12,6 @@
 #include <atomic>
 #include <memory>
 #include <fstream>
-#include <sstream>
-#include <cmath>
 
 static std::atomic<bool> g_stop{false};
 static std::atomic<bool> g_reload{false};
@@ -21,16 +19,13 @@ static void handle_signal(int) {
     g_stop.store(true);
 }
 
-// Simple controller module: handles Reload/Quit from IPC
 class ControllerModule : public msm::Module {
 public:
     ControllerModule() : Module("Controller") {}
     void handleState(const msm::Message& msg) override {
         if (msg.cmd == "Reload") {
-            std::cout << "[Controller] Reload triggered via IPC\n";
             g_reload.store(true);
         } else if (msg.cmd == "Quit") {
-            std::cout << "[Controller] Quit triggered via IPC\n";
             g_stop.store(true);
         }
     }
@@ -39,7 +34,6 @@ public:
 
 static DaqConfig g_config;
 static const std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
-static const std::string g_runtimeConfigPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/runtime_config.json";
 
 static void send(const std::string& niString) {
     msm::Message msg = msm::NIStringParser::parse(niString, "Main");
@@ -47,7 +41,7 @@ static void send(const std::string& niString) {
 }
 
 static void distributeConfig() {
-    send("Configure >> BatchSize=10000 -@ Process");
+    send("Configure >> BatchSize=10000, StorageTarget=Storage -@ Process");
     send("Configure >> SavePath=" + g_config.data_save_path
          + ", FileName=" + g_config.file_name
          + ", FileType=" + g_config.file_type
@@ -58,134 +52,29 @@ static void distributeConfig() {
          + " -@ Storage");
 }
 
-static void saveConfig() {
-    g_config.saveToJson(g_runtimeConfigPath);
-}
-
-static void loadAndDistribute() {
+static void loadConfig() {
     g_config = DaqConfig();
     if (!g_config.loadFromJson(g_initConfigPath)) {
         std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
         return;
     }
-    saveConfig();
-    distributeConfig();
-    std::cout << "[main] Config loaded and distributed\n";
-}
-
-static void writeArray(std::ostream& os, const std::vector<uint32_t>& arr, size_t maxLen) {
-    os << "[";
-    size_t step = arr.size() > maxLen ? arr.size() / maxLen : 1;
-    for (size_t i = 0; i < arr.size(); i += step) {
-        if (i > 0) os << ",";
-        os << arr[i];
-    }
-    os << "]";
-}
-
-static void writeArray(std::ostream& os, const std::vector<uint64_t>& arr, size_t maxLen) {
-    os << "[";
-    size_t step = arr.size() > maxLen ? arr.size() / maxLen : 1;
-    for (size_t i = 0; i < arr.size(); i += step) {
-        if (i > 0) os << ",";
-        os << arr[i];
-    }
-    os << "]";
-}
-
-static void writeArray(std::ostream& os, const std::vector<double>& arr, size_t maxLen) {
-    os << "[";
-    size_t step = arr.size() > maxLen ? arr.size() / maxLen : 1;
-    for (size_t i = 0; i < arr.size(); i += step) {
-        if (i > 0) os << ",";
-        os << (std::isnan(arr[i]) || std::isinf(arr[i]) ? 0.0 : arr[i]);
-    }
-    os << "]";
-}
-
-static constexpr size_t JSON_MAX_ARRAY = 10000;
-
-static void writeLiveJSON(const ModuleSim& sim,
-                          const ModuleProcessFull& process,
-                          const ModuleStorage& storage) {
-    ModuleSim::Stats s = sim.getStats();
-    int nCh = s.total_frames.size() > 0 ? (int)s.total_frames.size() : 4;
-    std::ostringstream out;
-    out << "{\n";
-    out << "  \"nch\": " << nCh << ",\n";
-    out << "  \"running\": " << (s.is_running ? "true" : "false") << ",\n";
-    out << "  \"channels\": [\n";
-    for (int i = 0; i < nCh; i++) {
-        if (i > 0) out << ",\n";
-        auto batchData = process.getLastBatchData(i);
-        int64_t fcnt = i < (int)s.total_frames.size() ? s.total_frames[i] : process.getProcessedFrames(i);
-        out << "    {\n";
-        out << "      \"ch\": " << (i + 1) << ",\n";
-        out << "      \"frames\": " << fcnt << ",\n";
-        out << "      \"overflow\": " << (i < (int)s.overflow_count.size() ? s.overflow_count[i] : 0) << ",\n";
-        out << "      \"frame_size\": " << (i < (int)s.frame_size.size() ? s.frame_size[i] : 0) << ",\n";
-        out << "      \"processed\": " << process.getProcessedFrames(i) << ",\n";
-        out << "      \"batches\": " << process.getProcessedBatches(i) << ",\n";
-        out << "      \"trig_id\": " << process.getLastTrigId(i) << ",\n";
-        out << "      \"bunch_id\": " << process.getLastBunchId(i) << ",\n";
-        out << "      \"saved\": " << storage.getSavedFrames(i) << ",\n";
-        if (batchData.count > 0) {
-            out << "      \"batch\": {\n";
-            out << "        \"no\": " << batchData.batchNo << ",\n";
-            out << "        \"count\": " << batchData.count << ",\n";
-            out << "        \"trig_id\": ";
-            writeArray(out, batchData.trig_id, JSON_MAX_ARRAY);
-            out << ",\n";
-            out << "        \"bunch_id\": ";
-            writeArray(out, batchData.bunch_id, JSON_MAX_ARRAY);
-            out << ",\n";
-            out << "        \"sum\": ";
-            writeArray(out, batchData.sum, JSON_MAX_ARRAY);
-            if (i == 0 && batchData.x.size() > 0) {
-                out << ",\n";
-                out << "        \"x\": ";
-                writeArray(out, batchData.x, JSON_MAX_ARRAY);
-                out << ",\n";
-                out << "        \"y\": ";
-                writeArray(out, batchData.y, JSON_MAX_ARRAY);
-                out << ",\n";
-                out << "        \"i\": ";
-                writeArray(out, batchData.i, JSON_MAX_ARRAY);
-            }
-            out << "\n      }\n";
-        } else {
-            out << "      \"batch\": null\n";
-        }
-        out << "    }";
-    }
-    out << "\n  ]\n}\n";
-    std::ofstream f("/tmp/msm_live.json");
-    f << out.str();
+    std::cout << "[main] Config loaded\n";
 }
 
 static void printStatus(const ModuleSim& sim,
                         const ModuleProcessFull& process,
                         const ModuleStorage& storage) {
     ModuleSim::Stats s = sim.getStats();
-    std::cout << "\n=== Status ===\n";
-    std::cout << "  SIM running=" << s.is_running << "\n";
+    std::cout << "=== Status ==============================\n"
+              << "  SIM: " << (s.is_running ? "生成" : "停止") << "\n";
     for (int i = 0; i < (int)s.total_frames.size(); i++) {
         std::cout << "  ch" << (i + 1)
-                  << ": generated=" << s.total_frames[i]
-                  << " overflow=" << s.overflow_count[i]
-                  << " frame_size=" << s.frame_size[i]
-                  << " processed=" << process.getProcessedFrames(i)
-                  << " saved=" << storage.getSavedFrames(i)
-                  << " trig_id=" << process.getLastTrigId(i)
-                  << " bunch_id=" << process.getLastBunchId(i)
-                  << " sum=" << process.getLastSum(i);
-        if (i == 0)
-            std::cout << " x=" << process.getLastX()
-                      << " y=" << process.getLastY()
-                      << " I=" << process.getLastI();
-        std::cout << "\n";
+                  << "  sim_frames=" << s.total_frames[i]
+                  << "  proc_frames=" << process.getProcessedFrames(i)
+                  << "  proc_batches=" << process.getProcessedBatches(i)
+                  << "\n";
     }
-    std::cout << "================\n" << std::endl;
+    std::cout << "=========================================\n" << std::endl;
 }
 
 int main() {
@@ -194,7 +83,7 @@ int main() {
 
     auto& bus = msm::MessageBus::instance();
 
-    loadAndDistribute();
+    loadConfig();
 
     int nCh = 0;
     for (const auto& card : g_config.cards)
@@ -227,31 +116,22 @@ int main() {
     for (int i = 0; i < sim.getRingCount(); i++)
         allRings.push_back(sim.getRing(i));
 
-    ModuleProcessFull process("Process", allRings);
-    ModuleStorage storage(nullptr, {});
     auto controller = std::make_shared<ControllerModule>();
     bus.registerModule(controller.get());
     controller->start();
 
     msm::IPCServer ipc("/tmp/msm_daq.sock");
+    bus.registerModule(&ipc);
+    ipc.start();
 
+    ModuleProcessFull process("Process", allRings);
+    ModuleStorage storage(nullptr, {});
     bus.registerModule(&process);
     bus.registerModule(&storage);
-    bus.registerModule(&ipc);
-
     process.start();
-    ipc.start();
-    // Storage 不 start — recording_=false，SaveBatchAll 消息到来时读出丢弃不写盘
 
-    std::cout << "[main] SIM started: " << sim.getRingCount() << " rings\n";
-
-    saveConfig();
-
-    send("Start >> -@ Process");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    send("Start >> -@ SimDAQ");
-
-    std::cout << "[main] Running. Commands: quit/status/reload\n";
+    std::cout << "[main] SIM ready: " << sim.getRingCount() << " rings\n";
+    std::cout << "[main] Running. Commands: start / stop / status / reload / quit\n";
 
     std::thread cli([&]() {
         std::string line;
@@ -261,12 +141,30 @@ int main() {
                 g_stop.store(true);
                 break;
             }
+            if (line == "start") {
+                send("Start >> -@ Process");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                send("Start >> -@ SimDAQ");
+                continue;
+            }
+            if (line == "stop") {
+                send("Stop >> -@ SimDAQ");
+                send("Stop >> -@ Process");
+                continue;
+            }
             if (line == "status") {
                 printStatus(sim, process, storage);
                 continue;
             }
             if (line == "reload") {
-                loadAndDistribute();
+                std::cout << "[main] Reloading...\n";
+                send("Stop >> -@ SimDAQ");
+                send("Stop >> -@ Process");
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                loadConfig();
+                distributeConfig();
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
                 continue;
             }
             std::cout << "[main] Sending: " << line << std::endl;
@@ -274,47 +172,28 @@ int main() {
         }
     });
 
-    writeLiveJSON(sim, process, storage);
-    auto lastPrint = std::chrono::steady_clock::now();
     while (!g_stop.load()) {
         if (g_reload.exchange(false)) {
-            std::cout << "[main] Reloading config...\n";
+            std::cout << "[main] Reloading (via IPC)...\n";
             send("Stop >> -@ SimDAQ");
             send("Stop >> -@ Process");
-            send("Stop >> -@ Storage");
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            loadConfig();
+            distributeConfig();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            loadAndDistribute();
-            send("Start >> -@ Storage");
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            send("Start >> -@ Process");
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            send("Start >> -@ SimDAQ");
-            std::cout << "[main] Reload done\n";
+            std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        auto now = std::chrono::steady_clock::now();
-        if (now - lastPrint > std::chrono::seconds(2)) {
-            auto s = sim.getStats();
-            std::cout << "[t="
-                      << std::chrono::duration_cast<std::chrono::seconds>(
-                             now - lastPrint).count()
-                      << "s]";
-            for (int i = 0; i < (int)s.total_frames.size(); i++)
-                std::cout << " ch" << (i + 1)
-                          << "=" << s.total_frames[i];
-            std::cout << std::endl;
-            lastPrint = now;
-        }
-        writeLiveJSON(sim, process, storage);
     }
 
     std::cout << "\n[main] Shutting down...\n";
 
     send("Stop >> -@ SimDAQ");
     send("Stop >> -@ Process");
-    send("Stop >> -@ Storage");
-
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    std::cin.setstate(std::ios::eofbit);
+    close(STDIN_FILENO);
 
     ipc.stop();
     sim.stop();
@@ -322,7 +201,6 @@ int main() {
     storage.stop();
 
     printStatus(sim, process, storage);
-    saveConfig();
     bus.shutdown();
 
     if (cli.joinable())
