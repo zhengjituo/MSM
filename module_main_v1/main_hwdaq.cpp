@@ -88,6 +88,7 @@ static void printStatus(const ModuleDAQ& daq,
 int main() {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
+    signal(SIGPIPE, SIG_IGN);
 
     auto& bus = msm::MessageBus::instance();
 

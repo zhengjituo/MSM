@@ -36,7 +36,7 @@ static constexpr size_t kTrailerSize = 64;
 constexpr int ModuleSim::MAX_CH;
 
 ModuleSim::ModuleSim()
-    : Module("SimDAQ")
+    : Module("DAQModule")
 {
     vars_.parent = this;
     idleDelayMs_ = 10;
@@ -131,7 +131,7 @@ void ModuleSim::onConfigure(const msm::Json& data) {
     nextTrigId_ = 1;
     nextBunchId_ = 1;
 
-    std::cout << "[SimDAQ] configured: " << nCh_ << "ch"
+    std::cout << "[DAQModule] configured: " << nCh_ << "ch"
               << " trigLen=" << trigLength_
               << " frameSize=" << frameSize_
               << " fps=" << (framesPerCycle_ * 1000 / idleDelayMs_)
@@ -141,11 +141,11 @@ void ModuleSim::onConfigure(const msm::Json& data) {
 
 void ModuleSim::onStart() {
     if (generating_.load()) {
-        std::cerr << "[SimDAQ] Already running\n";
+        std::cerr << "[DAQModule] Already running\n";
         return;
     }
     if (nCh_ == 0) {
-        std::cerr << "[SimDAQ] No channels configured\n";
+        std::cerr << "[DAQModule] No channels configured\n";
         return;
     }
 
@@ -157,7 +157,7 @@ void ModuleSim::onStart() {
 
     emergencyStop_ = false;
     generating_ = true;
-    std::cout << "[SimDAQ] Generating " << framesPerCycle_
+    std::cout << "[DAQModule] Generating " << framesPerCycle_
               << " frames/cycle (" << (framesPerCycle_ * 1000 / idleDelayMs_)
               << " fps), " << nCh_ << "ch, bunchInc=" << bunchInc_ << "\n";
 }
@@ -165,7 +165,7 @@ void ModuleSim::onStart() {
 void ModuleSim::onStop() {
     generating_ = false;
     emergencyStop_ = true;
-    std::cout << "[SimDAQ] Stopped";
+    std::cout << "[DAQModule] Stopped";
     for (int i = 0; i < nCh_; i++)
         std::cout << " ch" << (i + 1) << "=" << totalFrames_[i].load();
     std::cout << "\n";
@@ -178,7 +178,7 @@ void ModuleSim::onReset() {
     }
     nextTrigId_ = 1;
     nextBunchId_ = 1;
-    std::cout << "[SimDAQ] Reset\n";
+    std::cout << "[DAQModule] Reset\n";
 }
 
 void ModuleSim::onStatus(msm::Message& response) {

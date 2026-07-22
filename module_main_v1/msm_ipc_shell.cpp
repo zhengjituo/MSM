@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <poll.h>
+#include <csignal>
 
 static int connect_socket(const char* path) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -20,6 +21,7 @@ static int connect_socket(const char* path) {
 }
 
 int main(int argc, char** argv) {
+    signal(SIGPIPE, SIG_IGN);
     const char* sock_path = argc > 1 ? argv[1] : "/tmp/msm_daq.sock";
     int fd = connect_socket(sock_path);
     if (fd < 0) return 1;
@@ -83,10 +85,10 @@ int main(int argc, char** argv) {
                     }
 
                     std::string ni;
-                    if (line == "start")       ni = "MSG Start >> -@ DAQModule";
-                    else if (line == "stop")   ni = "MSG Stop >> ->| DAQModule";
-                    else if (line == "status") ni = "MSG Status >> -@ DAQModule";
-                    else if (line == "reload") ni = "MSG Reload >> -@ Controller";
+                    if (line == "start")       ni = "start";
+                    else if (line == "stop")   ni = "stop";
+                    else if (line == "status") ni = "status";
+                    else if (line == "reload") ni = "reload";
                     else if (line.substr(0, 4) == "MSG ") ni = line;
                     else                       ni = "MSG " + line;
 

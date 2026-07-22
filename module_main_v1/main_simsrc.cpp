@@ -80,6 +80,7 @@ static void printStatus(const ModuleSim& sim,
 int main() {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
+    signal(SIGPIPE, SIG_IGN);
 
     auto& bus = msm::MessageBus::instance();
 
@@ -102,7 +103,7 @@ int main() {
         if (ch1) trigLen = std::stoi(ch1->trig_length);
 
         msm::Message simCfg("Configure");
-        simCfg.setTarget("SimDAQ");
+        simCfg.setTarget("DAQModule");
         simCfg.setSender("Main");
         simCfg.data.set("NumChannels", nCh);
         simCfg.data.set("TrigLength", trigLen);
@@ -144,11 +145,11 @@ int main() {
             if (line == "start") {
                 send("Start >> -@ Process");
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Start >> -@ SimDAQ");
+                send("Start >> -@ DAQModule");
                 continue;
             }
             if (line == "stop") {
-                send("Stop >> -@ SimDAQ");
+                send("Stop >> -@ DAQModule");
                 send("Stop >> -@ Process");
                 continue;
             }
@@ -158,7 +159,7 @@ int main() {
             }
             if (line == "reload") {
                 std::cout << "[main] Reloading...\n";
-                send("Stop >> -@ SimDAQ");
+                send("Stop >> -@ DAQModule");
                 send("Stop >> -@ Process");
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 loadConfig();
@@ -175,7 +176,7 @@ int main() {
     while (!g_stop.load()) {
         if (g_reload.exchange(false)) {
             std::cout << "[main] Reloading (via IPC)...\n";
-            send("Stop >> -@ SimDAQ");
+            send("Stop >> -@ DAQModule");
             send("Stop >> -@ Process");
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             loadConfig();
@@ -188,7 +189,7 @@ int main() {
 
     std::cout << "\n[main] Shutting down...\n";
 
-    send("Stop >> -@ SimDAQ");
+    send("Stop >> -@ DAQModule");
     send("Stop >> -@ Process");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
