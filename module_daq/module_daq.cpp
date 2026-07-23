@@ -253,11 +253,13 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "TrigPulseWidth", chCfg.trig_pulse_width.c_str());
             CxDeviceSetChannelValue(hCard, ch, "VoltageRange", chCfg.voltage_range.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigLevel", chCfg.trig_level.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "WaveDataEnable", chCfg.wave_data_enable.c_str());
             std::cout << "[ModuleDAQ]   ch" << ch << " configured ("
                       << "TrigLength=" << chCfg.trig_length
                       << " VoltageRange=" << chCfg.voltage_range
                       << " TrigLevel=" << chCfg.trig_level
-                      << " TrigSource=" << chCfg.trig_source << ")\n";
+                      << " TrigSource=" << chCfg.trig_source
+                      << " WaveData=" << chCfg.wave_data_enable << ")\n";
 
             auto& slot = activeChannels_[activeChCount_++];
             slot.cardHandle = hCard;
