@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Keep all executables in build/ (not build/module_main_v*/)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+# Each version's binaries go into its own build/ directory
+# (set per-target RUNTIME_OUTPUT_DIRECTORY in subdirectory CMakeLists.txt)
 
 # ── Framework core ──
 add_subdirectory(module_core)
@@ -21,7 +21,5 @@ add_subdirectory(module_storage)
 add_subdirectory(module_simsource)
 
 # ── Main executables ──
-add_subdirectory(module_main_v1)   # msm_cli_simsrc (simsource+CLI), msm_cli_hwdaq (hwdaq+CLI)
-add_subdirectory(module_main_v2)   # msm_web_hwdaq  (hwdaq+WebUI)
-
-add_subdirectory(module_main_v3)   # msm_web_v3  (V3 WebUI，从 V2 备份起步)
+add_subdirectory(module_main_v1)   # msm_cli_simsrc, msm_cli_hwdaq, msm_ipc_shell
+add_subdirectory(module_main_v3)   # msm_webui (IPC-to-HTTP bridge)

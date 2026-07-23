@@ -302,6 +302,8 @@ bool ModuleDAQ::onStart() {
 
     emergencyStop_ = false;
     acquiring_ = true;
+    for (int i = 0; i < activeChCount_; i++)
+        activeChannels_[i].totalFrames.store(0);
     std::cout << "[ModuleDAQ] Acquiring (message-driven)\n";
 
     // DAQ ready → start Process consumer from clean ring state
@@ -314,25 +316,27 @@ bool ModuleDAQ::onStart() {
 
 void ModuleDAQ::stop() {
     onStop();
+    if (hwReady_.load()) closeHW();
     Module::stop();
 }
 
 void ModuleDAQ::onStop() {
+    if (!acquiring_.load() && emergencyStop_.load())
+        return;
     if (!acquiring_.exchange(false) && !emergencyStop_.load())
         return;
     emergencyStop_ = true;
 
-    // 先停触发 → 停通道 → flush 残帧进 ring → 再通知 Process drain
     setTriggerOutput(false);
     std::cout << "[ModuleDAQ] 3010 trigger off\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     stopChannels();
     flushAll();
-
-    msm::Message stopProcess("Stop");
-    stopProcess.setTarget("Process");
-    msm::MessageBus::instance().send(stopProcess);
-    std::cout << "[ModuleDAQ] Stopped (DMA flushed, ring draining in Process)\n";
+    std::cout << "[DAQ] stop:";
+    for (int i = 0; i < activeChCount_; i++)
+        std::cout << " ch" << activeChannels_[i].ch << "=" << activeChannels_[i].totalFrames.load();
+    std::cout << std::endl;
 }
 
 void ModuleDAQ::onReset() {

@@ -30,16 +30,13 @@ MSM_DAQ/
 ├── module_storage/          # 存盘模块
 ├── module_simsource/          # 虚拟数据源（仿真模式）
 │
-├── module_main_v1/          # V1 CLI：用户命令驱动，IPC 可交互，无自动采集
+├── module_main_v1/          # V1 CLI + Storage（合并 V2）
 │   ├── main_simsrc.cpp      → msm_cli_simsrc（仿真）
 │   ├── main_hwdaq.cpp       → msm_cli_hwdaq（硬件）
 │   ├── msm_ipc_shell.cpp    → msm_ipc_shell（独立 IPC 终端）
 │   └── CMakeLists.txt
-├── module_main_v2/          # V2 Storage 保存文件（开发中）
-│   ├── main_hwdaq.cpp       → msm_web_hwdaq（即将改为 storage 版本）
-│   └── web/
-├── module_main_v3/          # V3 WebUI（从 V2 WebUI 备份起步）
-│   ├── main_hwdaq.cpp       → msm_web_hwdaq
+├── module_main_v3/          # V3 WebUI（IPC-to-HTTP 桥接）
+│   ├── main_hwdaq.cpp       → msm_webui
 │   └── web/
 ├── module_core/tests/
 │   ├── calculator/          # 框架 demo（AddModule/MultiplyModule, IPC 通信示例）
@@ -72,12 +69,11 @@ MSM_DAQ/
 - `.gitignore` 已排除上述内容
 
 ### 当前版本状态
-- **V1 CLI（module_main_v1）** — 稳定。用户手动 start/stop，IPC 交互
+- **V1 CLI + Storage（module_main_v1）** — 稳定。CLI + IPC 交互，支持 Storage 录盘
   - 二进制：`msm_cli_hwdaq`（硬件）、`msm_cli_simsrc`（仿真）、`msm_ipc_shell`（IPC 终端）
   - IPC 路径：`/tmp/msm_daq.sock`
-  - 命令：`start` / `stop` / `status` / `reload` / `quit`
-- **V2 Storage（module_main_v2）** — 开发中。加入保存文件功能，启用物理通道号和录盘
-- **V3 WebUI（module_main_v3）** — 规划中。Web GUI 界面
+  - 命令：`start` / `stop` / `enablesave` / `disablesave` / `status` / `reload` / `quit`
+- **V3 WebUI（module_main_v3）** — 开发中。IPC-to-HTTP 桥接 + Web GUI
 
 ### 目录设计规则
 - 模块扁平化：`module_xxx/`，共享依赖在顶层

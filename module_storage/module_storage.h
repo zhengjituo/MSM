@@ -21,9 +21,10 @@ public:
     void handleState(const msm::Message& msg) override;
     void onIdle() override;
 
-    int64_t getSavedFrames(int ch) const;
+    int64_t getConsumedFrames(int ch) const;
     int64_t getSavedBytes(int ch) const;
     bool isSaveEnabled() const { return saveEnabled_.load(); }
+    bool isDraining() const { return draining_.load(); }
 
 private:
     void onConfigure(const msm::Json& data);
@@ -66,7 +67,7 @@ private:
         FILE* fp = nullptr;
         size_t bytesWritten = 0;
         int sequence = 0;
-        std::atomic<int64_t> framesSaved{0};
+        std::atomic<int64_t> framesConsumed{0};
         std::atomic<int64_t> bytesSaved{0};
         uint64_t firstBunchID = 0;
         uint64_t lastBunchID = 0;
@@ -78,6 +79,7 @@ private:
     int sessionId_ = 0;
     std::atomic<bool> recording_{false};
     std::atomic<bool> draining_{false};
+    bool drainHadData_ = false;
     std::atomic<bool> saveEnabled_{false};
     std::mutex fileMtx_;
     std::vector<uint8_t> readBuf_;

@@ -12,11 +12,17 @@
 #include <atomic>
 #include <memory>
 #include <fstream>
+#include <iomanip>
 
 static std::atomic<bool> g_stop{false};
 static std::atomic<bool> g_reload{false};
 static void handle_signal(int) {
     g_stop.store(true);
+}
+
+static void send(const std::string& niString) {
+    msm::Message msg = msm::NIStringParser::parse(niString, "Main");
+    msm::MessageBus::instance().send(msg);
 }
 
 class ControllerModule : public msm::Module {
@@ -34,11 +40,6 @@ public:
 
 static DaqConfig g_config;
 static const std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
-
-static void send(const std::string& niString) {
-    msm::Message msg = msm::NIStringParser::parse(niString, "Main");
-    msm::MessageBus::instance().send(msg);
-}
 
 static void distributeConfig() {
     send("Configure >> BatchSize=10000, StorageTarget=Storage -@ Process");
@@ -69,22 +70,21 @@ static void printStatus(const ModuleSim& sim,
                         const ModuleProcess& process,
                         const ModuleStorage& storage) {
     ModuleSim::Stats s = sim.getStats();
-    std::cout << "=== Status ==============================\n"
-              << "  SIM: " << (s.is_running ? "生成" : "停止") << "\n";
+    std::cout << "\n======= Frame Summary =======\n";
+    std::cout << "  "
+              << std::setw(4) << "ch"
+              << std::setw(11) << "DAQ"
+              << std::setw(11) << "Process"
+              << std::setw(11) << "Storage" << "\n";
     for (int i = 0; i < (int)s.total_frames.size(); i++) {
-        std::cout << "  ch" << (i + 1)
-                  << "  sim_frames=" << s.total_frames[i]
-                  << "  proc_frames=" << process.getProcessedFrames(i)
-                  << "  proc_batches=" << process.getProcessedBatches(i)
+        std::cout << "  "
+                  << std::setw(4) << ("ch" + std::to_string(i + 1))
+                  << std::setw(11) << s.total_frames[i]
+                  << std::setw(11) << process.getProcessedFrames(i)
+                  << std::setw(11) << storage.getConsumedFrames(i)
                   << "\n";
     }
-    for (int i = 0; i < (int)s.total_frames.size() && i < 4; i++) {
-        std::cout << "  storage_ch" << (i + 1)
-                  << "_frames=" << storage.getSavedFrames(i)
-                  << "  bytes=" << storage.getSavedBytes(i)
-                  << "\n";
-    }
-    std::cout << "=========================================\n" << std::endl;
+    std::cout << "============================\n" << std::endl;
 }
 
 int main() {
@@ -171,10 +171,13 @@ int main() {
             }
             if (line == "stop") {
                 send("Stop >> -@ DAQModule");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 send("Stop >> -@ Process");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 send("Stop >> -@ Storage");
+                for (int i = 0; i < 50 && storage.isDraining(); i++)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                printStatus(sim, process, storage);
                 continue;
             }
             if (line == "enablesave") {
@@ -192,7 +195,9 @@ int main() {
             if (line == "reload") {
                 std::cout << "[main] Reloading...\n";
                 send("Stop >> -@ DAQModule");
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 send("Stop >> -@ Process");
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 send("Stop >> -@ Storage");
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 loadConfig();
@@ -210,7 +215,9 @@ int main() {
         if (g_reload.exchange(false)) {
             std::cout << "[main] Reloading (via IPC)...\n";
             send("Stop >> -@ DAQModule");
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             send("Stop >> -@ Process");
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             send("Stop >> -@ Storage");
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             loadConfig();
@@ -222,23 +229,19 @@ int main() {
     }
 
     std::cout << "\n[main] Shutting down...\n";
-
     send("Stop >> -@ DAQModule");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Stop >> -@ Process");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Stop >> -@ Storage");
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    for (int i = 0; i < 50 && storage.isDraining(); i++)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    process.stop();
+    storage.stop();
+    sim.stop();
+    ipc.stop();
 
     std::cin.setstate(std::ios::eofbit);
     close(STDIN_FILENO);
 
-    ipc.stop();
-    sim.stop();
-    process.stop();
-    storage.stop();
-
-    printStatus(sim, process, storage);
     bus.shutdown();
 
     if (cli.joinable())

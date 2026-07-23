@@ -33,9 +33,9 @@ ModuleStorage::~ModuleStorage() {
     closeFiles();
 }
 
-int64_t ModuleStorage::getSavedFrames(int ch) const {
+int64_t ModuleStorage::getConsumedFrames(int ch) const {
     if (ch < 0 || ch >= MAX_CH) return 0;
-    return files_[ch].framesSaved.load();
+    return files_[ch].framesConsumed.load();
 }
 
 int64_t ModuleStorage::getSavedBytes(int ch) const {
@@ -91,21 +91,94 @@ void ModuleStorage::onIdle() {
     size_t avail = saveRing_->availableDataSize();
 
     if (!recording_.load() && !draining_.load()) {
-        if (avail >= totalNeeded && readBuf_.size() >= totalNeeded)
-            saveRing_->readData(readBuf_.data(), totalNeeded);
-        return;
-    }
-
-    if (avail < totalNeeded) {
-        if (draining_.load() && avail == 0) {
-            draining_ = false;
-            recording_ = false;
-            std::lock_guard<std::mutex> lock(fileMtx_);
-            closeFiles();
-            std::cout << "[Storage] Drain complete\n";
+        if (avail > 0) {
+            if (readBuf_.size() < avail)
+                readBuf_.resize(avail);
+            saveRing_->readData(readBuf_.data(), avail);
+            int64_t discardFrames = (int64_t)avail / (int64_t)nCh_ / (int64_t)frameSize_;
+            for (int i = 0; i < nCh_; i++)
+                files_[i].framesConsumed.fetch_add(discardFrames);
         }
         return;
     }
+
+    if (draining_.load()) {
+        if (avail > 0) {
+            drainHadData_ = true;
+            while (avail >= totalNeeded) {
+                if (readBuf_.size() < totalNeeded)
+                    readBuf_.resize(totalNeeded);
+                size_t got = saveRing_->readData(readBuf_.data(), totalNeeded);
+                if (got < totalNeeded) { avail = 0; break; }
+                avail -= totalNeeded;
+                if (!recording_.load()) continue;
+                int64_t curBatch = files_[0].framesConsumed.load() / (int64_t)batchSize_ + 1;
+                for (int i = 0; i < nCh_; i++) {
+                    const uint8_t* chData = readBuf_.data() + i * batchBytes;
+                    auto& f = files_[i];
+                    if (!f.fp) continue;
+                    size_t written = fwrite(chData, 1, batchBytes, f.fp);
+                    if (written == batchBytes) {
+                        f.bytesWritten += written;
+                        f.framesConsumed.fetch_add((int64_t)batchSize_);
+                        f.bytesSaved.fetch_add((int64_t)written);
+                    }
+                }
+                if (maxSaveSizeMB_ > 0) {
+                    size_t limit = maxSaveSizeMB_ * 1024ULL * 1024ULL;
+                    for (int i = 0; i < nCh_; i++)
+                        if (files_[i].bytesWritten >= limit) {
+                            std::lock_guard<std::mutex> lock(fileMtx_);
+                            for (int j = 0; j < nCh_; j++) rotateFile(j);
+                            break;
+                        }
+                }
+            }
+            if (avail > 0) {
+                if (readBuf_.size() < avail)
+                    readBuf_.resize(avail);
+                saveRing_->readData(readBuf_.data(), avail);
+                if (recording_.load()) {
+                    size_t perCh = avail / (size_t)nCh_;
+                    for (int i = 0; i < nCh_; i++) {
+                        auto& f = files_[i];
+                        if (!f.fp) continue;
+                        size_t written = fwrite(readBuf_.data() + i * perCh, 1, perCh, f.fp);
+                        if (written != perCh)
+                            std::cerr << "[Storage] ch" << (i + 1)
+                                      << " partial write error: " << strerror(errno) << "\n";
+                        else
+                            f.framesConsumed.fetch_add((int64_t)(perCh / frameSize_));
+                    }
+                    std::cout << "[Storage] drain saved " << (avail / nCh_ / frameSize_)
+                              << " frames/ch\n";
+                } else {
+                    int64_t discardFrames = avail / (int64_t)nCh_ / (int64_t)frameSize_;
+                    for (int i = 0; i < nCh_; i++)
+                        files_[i].framesConsumed.fetch_add(discardFrames);
+                    std::cout << "[Storage] drain discarded " << discardFrames
+                              << " frames/ch (save disabled)\n";
+                }
+            }
+        }
+        if (avail == 0) {
+            draining_ = false;
+            recording_ = false;
+            {
+                std::lock_guard<std::mutex> lock(fileMtx_);
+                closeFiles();
+            }
+            std::cout << "[Storage] drain:";
+            for (int ci = 0; ci < nCh_ && ci < MAX_CH; ci++)
+                std::cout << " ch" << (ci + 1) << "=" << files_[ci].framesConsumed.load();
+            std::cout << "\n";
+            drainHadData_ = false;
+        }
+        return;
+    }
+
+    if (avail < totalNeeded)
+        return;
 
     if (readBuf_.size() < totalNeeded)
         readBuf_.resize(totalNeeded);
@@ -113,7 +186,7 @@ void ModuleStorage::onIdle() {
     size_t got = saveRing_->readData(readBuf_.data(), totalNeeded);
     if (got < totalNeeded) return;
 
-    int64_t curBatch = files_[0].framesSaved.load() / (int64_t)batchSize_ + 1;
+    int64_t curBatch = files_[0].framesConsumed.load() / (int64_t)batchSize_ + 1;
 
     for (int i = 0; i < nCh_; i++) {
         const uint8_t* chData = readBuf_.data() + i * batchBytes;
@@ -152,7 +225,7 @@ void ModuleStorage::onIdle() {
             continue;
         }
         f.bytesWritten += written;
-        f.framesSaved.fetch_add((int64_t)batchSize_);
+        f.framesConsumed.fetch_add((int64_t)batchSize_);
         f.bytesSaved.fetch_add((int64_t)written);
     }
 
@@ -175,7 +248,7 @@ void ModuleStorage::onIdle() {
 
 void ModuleStorage::onStart() {
     for (int i = 0; i < nCh_; i++) {
-        files_[i].framesSaved.store(0);
+        files_[i].framesConsumed.store(0);
         files_[i].bytesSaved.store(0);
         files_[i].firstBunchID = 0;
         files_[i].lastBunchID = 0;
@@ -223,7 +296,7 @@ void ModuleStorage::onStatus(msm::Message& response) {
     response.data.set("session", std::to_string(sessionId_));
     for (int i = 0; i < nCh_; i++) {
         response.data.set("ch" + std::to_string(i + 1) + "_saved_frames",
-                          std::to_string(files_[i].framesSaved.load()));
+                          std::to_string(files_[i].framesConsumed.load()));
         response.data.set("ch" + std::to_string(i + 1) + "_saved_bytes",
                           std::to_string(files_[i].bytesSaved.load()));
     }
@@ -236,7 +309,7 @@ void ModuleStorage::closeFiles() {
         fclose(f.fp);
         f.fp = nullptr;
         int ch = i;
-        if (f.framesSaved.load() > 0) {
+        if (f.framesConsumed.load() > 0) {
             std::string tmpPath = buildTempPath(ch, f.sequence);
             std::string finalPath = buildFinalPath(ch, f.sequence,
                 f.hasFirstBunch ? f.firstBunchID : 0,
@@ -266,7 +339,7 @@ void ModuleStorage::rotateFile(int ch) {
     std::string finalPath = buildFinalPath(ch, f.sequence,
         f.hasFirstBunch ? f.firstBunchID : 0,
         f.lastBunchID);
-    if (f.framesSaved.load() > 0) {
+    if (f.framesConsumed.load() > 0) {
         if (rename(tmpPath.c_str(), finalPath.c_str()) == 0)
             std::cout << "[Storage] Rotate -> " << finalPath << "\n";
         else
@@ -350,7 +423,7 @@ void ModuleStorage::registerVars() {
     int maxCh = nCh_ > 0 ? nCh_ : MAX_CH;
     for (int i = 0; i < maxCh; i++) {
         std::string idx = std::to_string(i + 1);
-        declareVar("ch" + idx + "_saved_frames", files_[i].framesSaved);
+        declareVar("ch" + idx + "_consumed_frames", files_[i].framesConsumed);
         declareVar("ch" + idx + "_saved_bytes", files_[i].bytesSaved);
     }
 }

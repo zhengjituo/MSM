@@ -120,6 +120,7 @@ void ModuleSim::onConfigure(const msm::Json& data) {
     frameSize_ = trigLength_ * 2 + 128;
     framesPerCycle_ = newFrames;
     triggerRateHz_ = newRate;
+    idleDelayMs_ = std::max<size_t>(1, framesPerCycle_ * 1000 / triggerRateHz_);
     bunchInc_ = std::max<size_t>(1, 1000000 / triggerRateHz_);
     frameBuf_.resize(frameSize_);
 
@@ -151,6 +152,7 @@ void ModuleSim::onStart() {
 
     for (int i = 0; i < nCh_; i++) {
         rings_[i]->setExpectedPacketSize(frameSize_);
+        totalFrames_[i].store(0);
     }
     nextTrigId_ = 1;
     nextBunchId_ = 1;

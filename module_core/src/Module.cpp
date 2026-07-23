@@ -187,7 +187,7 @@ void Module::runLoop() {
 
         if (!msg.cmd.empty()) {
             handleState(msg);
-        } else if (running_) {
+        } else {
             onIdle();
         }
     }

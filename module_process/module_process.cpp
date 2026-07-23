@@ -130,9 +130,8 @@ void ModuleProcess::setFrameIndex(int idx) {
 }
 
 void ModuleProcess::onIdle() {
-    if (consuming_.load() || draining_.load()) {
-        msm::Message consumeOnce("ConsumeOnce");
-        post(consumeOnce);
+    if ((consuming_.load() || draining_.load()) && !emergencyStop_.load()) {
+        doConsumeOnce();
     }
 }
 
@@ -174,6 +173,8 @@ void ModuleProcess::onStart() {
     emergencyStop_ = false;
     draining_ = false;
     for (int i = 0; i < nCh_; i++) {
+        processedFrames_[i].store(0);
+        processedBatches_[i].store(0);
         lastWritePos_[i].store(rings_[i] ? rings_[i]->getWriteTotal() : 0);
         lastTrigId_[i].store(0);
         lastBunchId_[i].store(0);
@@ -189,6 +190,8 @@ void ModuleProcess::onStart() {
 }
 
 void ModuleProcess::onStop() {
+    if (draining_.load() || emergencyStop_.load())
+        return;
     consuming_ = false;
     draining_ = true;
     std::cout << "[" << name_ << "] Draining remaining frames...\n";
@@ -277,6 +280,43 @@ void ModuleProcess::extractFrame(const uint8_t* frame, size_t flen, int ch, size
 void ModuleProcess::doConsumeOnce() {
     if (emergencyStop_.load()) return;
 
+    // Drain mode: read ALL remaining frames from all channels, any amount
+    if (draining_.load()) {
+        bool allEmpty = true;
+        for (int i = 0; i < nCh_; i++) {
+            if (!rings_[i]) continue;
+            size_t avail = rings_[i]->availableFrames();
+            if (avail == 0) continue;
+            allEmpty = false;
+
+            size_t flen = rings_[i]->getExpectedPacketSize();
+            size_t readBytes = avail * flen;
+            if (batchBuf_.size() < readBytes)
+                batchBuf_.resize(readBytes);
+
+            size_t got = rings_[i]->readData(batchBuf_.data(), readBytes);
+            if (got == 0) continue;
+
+            if (saveRing_)
+                saveRing_->writeFromDevice(batchBuf_.data(), got);
+
+            size_t actualFrames = got / flen;
+            processedFrames_[i].fetch_add(actualFrames);
+            lastWritePos_[i].store(lastWritePos_[i].load() + got);
+            std::cout << "[" << name_ << "] ch" << (i + 1)
+                      << " drain=" << actualFrames << " -> saveRing\n";
+        }
+        if (allEmpty) {
+            draining_ = false;
+            emergencyStop_ = true;
+            std::cout << "[" << name_ << "] drain done:";
+            for (int i = 0; i < nCh_; i++)
+                std::cout << " ch" << (i + 1) << "=" << processedFrames_[i].load();
+            std::cout << std::endl;
+        }
+        return;
+    }
+
     bool allReady = true;
     for (int i = 0; i < nCh_; i++) {
         if (!rings_[i]) { allReady = false; break; }
@@ -286,42 +326,7 @@ void ModuleProcess::doConsumeOnce() {
         if (writeTotal - lastWrite < needed) { allReady = false; break; }
         if (rings_[i]->availableFrames() < batchSize_) { allReady = false; break; }
     }
-    if (!allReady) {
-        if (draining_.load()) {
-            bool allEmpty = true;
-            for (int i = 0; i < nCh_; i++) {
-                if (!rings_[i]) continue;
-                size_t avail = rings_[i]->availableFrames();
-                if (avail == 0) continue;
-                allEmpty = false;
-
-                size_t flen = rings_[i]->getExpectedPacketSize();
-                size_t readBytes = avail * flen;
-                if (batchBuf_.size() < readBytes)
-                    batchBuf_.resize(readBytes);
-
-                size_t got = rings_[i]->readData(batchBuf_.data(), readBytes);
-                if (got == 0) continue;
-
-                if (saveRing_) saveRing_->writeFromDevice(batchBuf_.data(), got);
-
-                size_t actualFrames = got / flen;
-                processedFrames_[i].fetch_add(actualFrames);
-                uint64_t lastWrite = lastWritePos_[i].load();
-                lastWritePos_[i].store(lastWrite + got);
-
-                int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
-                std::cout << "[" << name_ << "] ch" << chPhys
-                          << " drain=" << actualFrames << "\n";
-            }
-            if (allEmpty) {
-                draining_ = false;
-                emergencyStop_ = true;
-                std::cout << "[" << name_ << "] Drain complete, ready for start\n";
-            }
-        }
-        return;
-    }
+    if (!allReady) return;
 
     int64_t curBatch = processedBatches_[0].load() + 1;
 

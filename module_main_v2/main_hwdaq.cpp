@@ -5,7 +5,6 @@
 #include "module_process.h"
 #include "module_storage.h"
 #include "daq_config.h"
-#include <httplib.h>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -15,7 +14,6 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
-#include <cstdio>
 
 static std::atomic<bool> g_stop{false};
 static std::atomic<bool> g_reload{false};
@@ -89,106 +87,6 @@ static void printStatus(const ModuleDAQ& daq,
     std::cout << "================\n" << std::endl;
 }
 
-static void writeArray(std::ostream& os, const std::vector<uint32_t>& arr, size_t maxLen) {
-    os << "[";
-    size_t step = arr.size() > maxLen ? arr.size() / maxLen : 1;
-    for (size_t i = 0; i < arr.size(); i += step) {
-        if (i > 0) os << ",";
-        os << arr[i];
-    }
-    os << "]";
-}
-
-static void writeArray(std::ostream& os, const std::vector<uint64_t>& arr, size_t maxLen) {
-    os << "[";
-    size_t step = arr.size() > maxLen ? arr.size() / maxLen : 1;
-    for (size_t i = 0; i < arr.size(); i += step) {
-        if (i > 0) os << ",";
-        os << arr[i];
-    }
-    os << "]";
-}
-
-static void writeArray(std::ostream& os, const std::vector<double>& arr, size_t maxLen) {
-    os << "[";
-    size_t step = arr.size() > maxLen ? arr.size() / maxLen : 1;
-    for (size_t i = 0; i < arr.size(); i += step) {
-        if (i > 0) os << ",";
-        os << (std::isnan(arr[i]) || std::isinf(arr[i]) ? 0.0 : arr[i]);
-    }
-    os << "]";
-}
-
-static constexpr size_t JSON_MAX_ARRAY = 10000;
-
-static void writeLiveJSON(const ModuleDAQ& daq,
-                          const ModuleProcess& process,
-                          const ModuleStorage& storage) {
-    ModuleDAQ::Stats dstat = daq.getStats();
-    int nCh = dstat.total_frames.size() > 0 ? (int)dstat.total_frames.size() : daq.getRingCount();
-    std::ostringstream out;
-    out << "{\n";
-    out << "  \"nch\": " << nCh << ",\n";
-    out << "  \"running\": " << (dstat.is_running ? "true" : "false") << ",\n";
-    out << "  \"channels\": [\n";
-    for (int i = 0; i < nCh; i++) {
-        if (i > 0) out << ",\n";
-        auto batchData = process.getLastBatchData(i);
-        if (batchData.count > 0) {
-            std::cerr << "[JSON] ch" << (i+1) << " batch=" << batchData.batchNo
-                      << " t0=" << (batchData.trig_id.size()>0?batchData.trig_id[0]:0)
-                      << " b0=" << (batchData.bunch_id.size()>0?batchData.bunch_id[0]:0)
-                      << " b1=" << (batchData.bunch_id.size()>1?batchData.bunch_id[1]:0)
-                      << " cnt=" << batchData.count << "\n";
-        }
-        int64_t fcnt = i < (int)dstat.total_frames.size() ? dstat.total_frames[i] : process.getProcessedFrames(i);
-        out << "    {\n";
-        out << "      \"ch\": " << (i + 1) << ",\n";
-        out << "      \"frames\": " << fcnt << ",\n";
-        out << "      \"overflow\": " << (i < (int)dstat.overflow_count.size() ? dstat.overflow_count[i] : 0) << ",\n";
-        out << "      \"frame_size\": " << (i < (int)dstat.frame_size.size() ? dstat.frame_size[i] : 0) << ",\n";
-        out << "      \"processed\": " << process.getProcessedFrames(i) << ",\n";
-        out << "      \"batches\": " << process.getProcessedBatches(i) << ",\n";
-        out << "      \"trig_id\": " << process.getLastTrigId(i) << ",\n";
-        out << "      \"bunch_id\": " << process.getLastBunchId(i) << ",\n";
-        out << "      \"sum\": " << process.getLastSum(i) << ",\n";
-        out << "      \"saved\": " << storage.getSavedFrames(i) << ",\n";
-        if (batchData.count > 0) {
-            out << "      \"batch\": {\n";
-            out << "        \"no\": " << batchData.batchNo << ",\n";
-            out << "        \"count\": " << batchData.count << ",\n";
-            out << "        \"trig_id\": ";
-            writeArray(out, batchData.trig_id, JSON_MAX_ARRAY);
-            out << ",\n";
-            out << "        \"bunch_id\": ";
-            writeArray(out, batchData.bunch_id, JSON_MAX_ARRAY);
-            out << ",\n";
-            out << "        \"sum\": ";
-            writeArray(out, batchData.sum, JSON_MAX_ARRAY);
-            if (i == 0 && batchData.x.size() > 0) {
-                out << ",\n";
-                out << "        \"x\": ";
-                writeArray(out, batchData.x, JSON_MAX_ARRAY);
-                out << ",\n";
-                out << "        \"y\": ";
-                writeArray(out, batchData.y, JSON_MAX_ARRAY);
-                out << ",\n";
-                out << "        \"i\": ";
-                writeArray(out, batchData.i, JSON_MAX_ARRAY);
-            }
-            out << "\n      }\n";
-        } else {
-            out << "      \"batch\": null\n";
-        }
-        out << "    }";
-    }
-    out << "\n  ]\n}\n";
-    std::ofstream f("/tmp/msm_live.tmp");
-    f << out.str();
-    f.close();
-    std::rename("/tmp/msm_live.tmp", "/tmp/msm_live.json");
-}
-
 int main() {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
@@ -229,65 +127,17 @@ int main() {
     storage.start();
     ipc.start();
 
-    // ── HTTP server (WebUI) ─────────────────────────────────────
-    httplib::Server httpSvr;
-    std::thread httpThread([&]() {
-        httpSvr.Post("/api/msg", [](const httplib::Request& req, httplib::Response& res) {
-            msm::Message msg = msm::NIStringParser::parse(req.body, "WebUI");
-            msm::MessageBus::instance().send(msg);
-            res.set_content("{\"status\":\"ok\"}", "application/json");
-        });
-        httpSvr.Get("/api/status", [&](const httplib::Request&, httplib::Response& res) {
-            std::ostringstream out;
-            ModuleDAQ::Stats dstat = daq.getStats();
-            int nCh = std::max((int)dstat.total_frames.size(), daq.getRingCount());
-            if (nCh == 0) nCh = 4;
-            out << "{\n";
-            out << "  \"nch\": " << nCh << ",\n";
-            out << "  \"daq_running\": " << (dstat.is_running ? "true" : "false") << ",\n";
-            out << "  \"channels\": [\n";
-            for (int i = 0; i < nCh; i++) {
-                if (i > 0) out << ",\n";
-                int64_t fcnt = i < (int)dstat.total_frames.size() ? dstat.total_frames[i] : 0;
-                out << "    {\n";
-                out << "      \"ch\": " << (i + 1) << ",\n";
-                out << "      \"frames\": " << fcnt << ",\n";
-                out << "      \"overflow\": " << (i < (int)dstat.overflow_count.size() ? dstat.overflow_count[i] : 0) << ",\n";
-                out << "      \"frame_size\": " << (i < (int)dstat.frame_size.size() ? dstat.frame_size[i] : 384) << ",\n";
-                out << "      \"processed\": " << process.getProcessedFrames(i) << ",\n";
-                out << "      \"batches\": " << process.getProcessedBatches(i) << ",\n";
-                out << "      \"trig_id\": " << process.getLastTrigId(i) << ",\n";
-                out << "      \"bunch_id\": " << process.getLastBunchId(i) << ",\n";
-                out << "      \"saved\": " << storage.getSavedFrames(i) << "\n";
-                out << "    }";
-            }
-            out << "\n  ]\n}\n";
-            res.set_content(out.str(), "application/json");
-        });
-        // Serve dashboard HTML at root
-        httpSvr.Get("/", [](const httplib::Request&, httplib::Response& res) {
-            std::ifstream f("web/msm_daq_hw.html");
-            if (!f.is_open()) { res.status = 404; res.set_content("dashboard not found", "text/plain"); return; }
-            std::string html((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-            res.set_content(html, "text/html");
-        });
-        httpSvr.listen("0.0.0.0", 8080);
-    });
-    httpThread.detach();
-    std::cout << "[main] WebUI: http://localhost:8080\n";
-
     // Init 帧内部顺序执行: ReadConfig → InitHW → UpdateConfig
     while (!daq.isHwReady())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     std::cout << "[main] DAQ started: " << daq.getRingCount() << " rings\n";
-    std::cout << "[main] Storage not started (recording disabled). Use Rec button in web GUI.\n";
+    std::cout << "[main] Storage not started (recording disabled). Use enablesave to enable.\n";
     // Process Start controlled by DAQ::onStart
     send("Start >> -@ DAQModule");
 
-    std::cout << "[main] Running. IPC: /tmp/msm_daq.sock  Web: http://localhost:8080\n";
+    std::cout << "[main] Running. IPC: /tmp/msm_daq.sock\n";
 
-    writeLiveJSON(daq, process, storage);
     int debugCnt = 0;
     while (!g_stop.load()) {
         if (++debugCnt % 20 == 0) {
@@ -324,7 +174,6 @@ int main() {
             std::cout << "[main] Reload done\n";
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        writeLiveJSON(daq, process, storage);
     }
 
     std::cout << "\n[main] Shutting down...\n";

@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <thread>
 #include <chrono>
+#include <poll.h>
 
 namespace msm {
 
@@ -165,8 +166,15 @@ bool IPCServer::handleClient(int clientFd)
 {
     char buf[4096];
     std::string cmdBuf;
+    struct pollfd pfd;
+    pfd.fd = clientFd;
+    pfd.events = POLLIN;
 
-    while (true) {
+    while (running_.load()) {
+        int rc = poll(&pfd, 1, 500);
+        if (rc <= 0) continue;
+        if (!(pfd.revents & POLLIN)) continue;
+
         memset(buf, 0, sizeof(buf));
         int n = recv(clientFd, buf, sizeof(buf) - 1, 0);
         if (n <= 0) break;

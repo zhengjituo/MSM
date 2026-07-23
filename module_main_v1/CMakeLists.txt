@@ -1,4 +1,7 @@
+set(TARGET_DIR ${CMAKE_SOURCE_DIR}/module_main_v1/build)
+
 add_executable(msm_cli_simsrc main_simsrc.cpp)
+set_target_properties(msm_cli_simsrc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_compile_definitions(msm_cli_simsrc PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(msm_cli_simsrc
     module_simsource
@@ -10,6 +13,7 @@ target_link_libraries(msm_cli_simsrc
 )
 
 add_executable(msm_cli_hwdaq main_hwdaq.cpp)
+set_target_properties(msm_cli_hwdaq PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_compile_definitions(msm_cli_hwdaq PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 target_include_directories(msm_cli_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/sdk_include)
 target_link_directories(msm_cli_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/sdk_include)
@@ -23,4 +27,5 @@ target_link_libraries(msm_cli_hwdaq
 )
 
 add_executable(msm_ipc_shell msm_ipc_shell.cpp)
+set_target_properties(msm_ipc_shell PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_link_libraries(msm_ipc_shell pthread)
