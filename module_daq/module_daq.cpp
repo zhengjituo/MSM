@@ -206,18 +206,20 @@ void ModuleDAQ::onReadConfig(const msm::Json& data) {
     }
 }
 
-// ── EPICS 固定点小数 → 十六进制 ──────────────────────────
+// ── 固定点小数 → 十六进制（抄自 card_parameter_define.cpp） ──
 static std::string fixedPointHex2(double value) {
-    // Q16.16: multiply by 2^16
+    // Q16.16: scale = 2^16 = 65536
     int64_t scaled = (int64_t)std::llround(value * 65536.0);
-    uint32_t u = (uint32_t)(int32_t)std::max(std::min(scaled, (int64_t)INT_MAX), (int64_t)INT_MIN);
+    int32_t clamped = (int32_t)std::max(std::min(scaled, (int64_t)INT_MAX), (int64_t)INT_MIN);
+    uint32_t u = (uint32_t)clamped;
     char buf[16]; snprintf(buf, sizeof(buf), "0x%08X", u);
     return buf;
 }
 static std::string fixedPointHex3(double value) {
-    // Q8.24: multiply by 2^24
+    // Q8.24: scale = 2^24 = 16777216
     int64_t scaled = (int64_t)std::llround(value * 16777216.0);
-    uint32_t u = (uint32_t)(int32_t)std::max(std::min(scaled, (int64_t)INT_MAX), (int64_t)INT_MIN);
+    int32_t clamped = (int32_t)std::max(std::min(scaled, (int64_t)INT_MAX), (int64_t)INT_MIN);
+    uint32_t u = (uint32_t)clamped;
     char buf[16]; snprintf(buf, sizeof(buf), "0x%08X", u);
     return buf;
 }
@@ -276,7 +278,8 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "TrigPolarity", chCfg.trig_polarity.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigPosition", chCfg.trig_position.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigWindowStart", chCfg.trig_window_start.c_str());
-            CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime", chCfg.trig_delay_time.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime",
+                std::to_string(config_.trig_delay_time_fix + std::stoi(chCfg.trig_delay_time)).c_str());
             CxDeviceSetChannelValue(hCard, ch, "ExternalTrigPolarity", chCfg.external_trig_polarity.c_str());
             CxDeviceSetChannelValue(hCard, ch, "DeadTime", chCfg.dead_time.c_str());
             CxDeviceSetChannelValue(hCard, ch, "FiniteTrigNum", chCfg.finite_trig_num.c_str());

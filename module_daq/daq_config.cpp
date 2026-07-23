@@ -146,6 +146,7 @@ bool DaqConfig::loadFromJsonString(const std::string& json) {
         run_serial = findValue(app, "runSerial");
         if (run_serial.empty()) run_serial = "r00001";
         frame_size = (size_t)findInt(app, "frameSize", 1152);
+        trig_delay_time_fix = findInt(app, "trigDelayTimeFix", 1600);
     }
 
     // --- DaqParameter ---
@@ -348,8 +349,9 @@ bool DaqConfig::saveToJson(const std::string& path) const {
     f << "        \"systemName\": \"" << system_name << "\",\n";
     f << "        \"deviceName\": \"" << device_name << "\",\n";
     f << "        \"expNo\": " << exp_no << ",\n";
-    f << "        \"runSerial\": \"" << run_serial << "\",\n";
-    f << "        \"frameSize\": " << frame_size << "\n";
+        f << "        \"runSerial\": \"" << run_serial << "\",\n";
+        f << "        \"frameSize\": " << frame_size << ",\n";
+        f << "        \"trigDelayTimeFix\": " << trig_delay_time_fix << "\n";
     f << "    }\n";
     f << "}\n";
 
@@ -370,6 +372,7 @@ std::map<std::string, std::string> DaqConfig::toKeyValues() const {
     kv["RunSerial"] = run_serial;
     kv["Slot"] = std::to_string(slot);
     kv["FrameSize"] = std::to_string(frame_size);
+    kv["TrigDelayTimeFix"] = std::to_string(trig_delay_time_fix);
 
     // 逐卡、逐通道
     for (size_t ci = 0; ci < cards.size(); ci++) {

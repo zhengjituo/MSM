@@ -102,6 +102,7 @@ struct DaqConfig {
     std::string run_serial = "r00001";
     int slot = 0;
     size_t frame_size = 1152;
+    int trig_delay_time_fix = 1600;
 
     bool loadFromJson(const std::string& path);
     bool loadFromJsonString(const std::string& json);
