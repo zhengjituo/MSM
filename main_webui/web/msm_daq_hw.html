@@ -14,6 +14,7 @@ h1 { color: #00d4ff; font-size: 22px; margin-bottom: 16px; display: flex; align-
 .btn-start { background: #00d4ff; color: #111; }
 .btn-stop { background: #e04a4a; color: #fff; }
 .btn-reload { background: #f0a030; color: #111; }
+.btn-quit { background: #333; color: #ccc; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .toolbar label { color: #a0a0b0; font-size: 13px; }
@@ -42,7 +43,8 @@ h2 { color: #00d4ff; font-size: 15px; margin: 14px 0 6px; }
   <label><input type="checkbox" id="saveCheck" onchange="toggleSave()"> Save</label>
   <button class="btn btn-start" id="btnStart" onclick="doStart()">▶ Start</button>
   <button class="btn btn-stop" id="btnStop" onclick="doStop()">■ Stop</button>
-  <button class="btn btn-reload" onclick="doReload()">↻ Reload</button>
+    <button class="btn btn-reload" onclick="doReload()">↻ Reload</button>
+  <button class="btn btn-quit" onclick="doQuit()">✕ Quit</button>
 </div>
 
 <h2>Frame Summary</h2>
@@ -145,6 +147,7 @@ async function post(body) {
 function doStart() { post('start'); }
 function doStop() { post('stop'); }
 function doReload() { post('reload'); }
+function doQuit() { if (confirm('Quit DAQ system?')) post('quit'); }
 
 function toggleSave() {
   const cb = document.getElementById('saveCheck');
