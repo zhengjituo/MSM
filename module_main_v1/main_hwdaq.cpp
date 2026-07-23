@@ -14,6 +14,9 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <iomanip>
+#include <poll.h>
+#include <unistd.h>
 
 static std::atomic<bool> g_stop{false};
 static std::atomic<bool> g_reload{false};
@@ -21,13 +24,20 @@ static void handle_signal(int) {
     g_stop.store(true);
 }
 
+static void send(const std::string& niString) {
+    msm::Message msg = msm::NIStringParser::parse(niString, "Main");
+    msm::MessageBus::instance().send(msg);
+}
+
 class ControllerModule : public msm::Module {
 public:
     ControllerModule() : Module("Controller") {}
     void handleState(const msm::Message& msg) override {
         if (msg.cmd == "Reload") {
+            std::cout << "[Controller] Reload triggered via IPC\n";
             g_reload.store(true);
         } else if (msg.cmd == "Quit") {
+            std::cout << "[Controller] Quit triggered via IPC\n";
             g_stop.store(true);
         }
     }
@@ -35,23 +45,16 @@ public:
 };
 
 static DaqConfig g_config;
-static const std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
 
-static void send(const std::string& niString) {
-    msm::Message msg = msm::NIStringParser::parse(niString, "Main");
-    msm::MessageBus::instance().send(msg);
-}
-
-static void sendDaqInit() {
-    msm::Message daqMsg("Init");
+static void distributeConfig(bool isInit = true) {
+    msm::Message daqMsg(isInit ? "Init" : "Configure");
     daqMsg.data.data = g_config.toKeyValues();
     daqMsg.setTarget("DAQModule");
     daqMsg.setSender("Main");
     msm::MessageBus::instance().send(daqMsg);
-}
 
-static void distributeConfig() {
     send("Configure >> BatchSize=10000, StorageTarget=Storage -@ Process");
+
     send("Configure >> SavePath=" + g_config.data_save_path
          + ", FelName=" + g_config.fel_name
          + ", SystemName=" + g_config.system_name
@@ -66,35 +69,25 @@ static void distributeConfig() {
          + " -@ Storage");
 }
 
-static void loadConfig() {
-    g_config = DaqConfig();
-    if (!g_config.loadFromJson(g_initConfigPath)) {
-        std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
-        return;
-    }
-    std::cout << "[main] Config loaded\n";
-}
-
 static void printStatus(const ModuleDAQ& daq,
                         const ModuleProcess& process,
                         const ModuleStorage& storage) {
     ModuleDAQ::Stats s = daq.getStats();
-    std::cout << "=== Status ==============================\n"
-              << "  DAQ: " << (s.is_running ? "采集" : "停止") << "\n";
+    std::cout << "\n======= Frame Summary =======\n";
+    std::cout << "  "
+              << std::setw(4) << "ch"
+              << std::setw(11) << "DAQ"
+              << std::setw(11) << "Process"
+              << std::setw(11) << "Storage" << "\n";
     for (int i = 0; i < (int)s.total_frames.size(); i++) {
-        std::cout << "  ch" << (i + 1)
-                  << "  daq_frames=" << s.total_frames[i]
-                  << "  proc_frames=" << process.getProcessedFrames(i)
-                  << "  proc_batches=" << process.getProcessedBatches(i)
+        std::cout << "  "
+                  << std::setw(4) << ("ch" + std::to_string(i + 1))
+                  << std::setw(11) << s.total_frames[i]
+                  << std::setw(11) << process.getProcessedFrames(i)
+                  << std::setw(11) << storage.getConsumedFrames(i)
                   << "\n";
     }
-    for (int i = 0; i < (int)s.total_frames.size() && i < 4; i++) {
-        std::cout << "  storage_ch" << (i + 1)
-                  << "_frames=" << storage.getSavedFrames(i)
-                  << "  bytes=" << storage.getSavedBytes(i)
-                  << "\n";
-    }
-    std::cout << "=========================================\n" << std::endl;
+    std::cout << "============================\n" << std::endl;
 }
 
 int main() {
@@ -104,7 +97,13 @@ int main() {
 
     auto& bus = msm::MessageBus::instance();
 
-    loadConfig();
+    {
+        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
+        if (!g_config.loadFromJson(cfgPath)) {
+            std::cerr << "[main] Failed to load " << cfgPath << "\n";
+            return 1;
+        }
+    }
 
     ModuleDAQ daq;
     bus.registerModule(&daq);
@@ -120,7 +119,7 @@ int main() {
     ipc.start();
 
     // Init DAQ: ReadConfig → InitHW → UpdateConfig (rings allocated after this)
-    sendDaqInit();
+    distributeConfig();
     while (!daq.isConfigured())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -140,7 +139,6 @@ int main() {
     bus.registerModule(&storage);
     process.start();
     storage.start();
-    distributeConfig();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     while (!daq.isHwReady())
@@ -148,60 +146,87 @@ int main() {
 
     std::cout << "[main] DAQ ready: " << daq.getRingCount() << " rings\n";
 
-    std::cout << "[main] Running. Commands: start / stop / enablesave / disablesave / status / reload / quit\n";
+    std::cout << "[main] Running. IPC: /tmp/msm_daq.sock\n"
+              << "Commands: start / stop / enablesave / disablesave / status / reload / quit\n";
 
     std::thread cli([&]() {
-        std::string line;
-        while (!g_stop.load() && std::getline(std::cin, line)) {
-            if (line.empty()) continue;
-            if (line == "quit" || line == "exit") {
-                g_stop.store(true);
-                break;
+        std::string rbuf;
+        while (!g_stop.load()) {
+            struct pollfd pfd;
+            pfd.fd = STDIN_FILENO;
+            pfd.events = POLLIN;
+            int rc = poll(&pfd, 1, 200);
+            if (rc < 0) { if (errno == EINTR) continue; break; }
+            if (rc == 0) continue;  // timeout, re-check g_stop
+            if (!(pfd.revents & POLLIN)) continue;
+            char buf[4096];
+            ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+            if (n <= 0) break;  // EOF
+            for (ssize_t i = 0; i < n; i++) {
+                char c = buf[i];
+                if (c == '\n') {
+                    std::string line = rbuf;
+                    rbuf.clear();
+                    if (line.empty()) continue;
+                    if (line == "quit" || line == "exit") {
+                        g_stop.store(true);
+                        break;
+                    }
+                    if (line == "start") {
+                        send("Start >> -@ Storage");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        send("Start >> -@ Process");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        send("Start >> -@ DAQModule");
+                        continue;
+                    }
+                    if (line == "stop") {
+                        send("Stop >> -@ DAQModule");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                        send("Stop >> -@ Process");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                        send("Stop >> -@ Storage");
+                        for (int i = 0; i < 50 && storage.isDraining(); i++)
+                            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        continue;
+                    }
+                    if (line == "enablesave") {
+                        send("EnableSave >> -@ Storage");
+                        continue;
+                    }
+                    if (line == "disablesave") {
+                        send("DisableSave >> -@ Storage");
+                        continue;
+                    }
+                    if (line == "status") {
+                        printStatus(daq, process, storage);
+                        continue;
+                    }
+                    if (line == "reload") {
+                        std::cout << "[main] Reloading...\n";
+                        send("Stop >> -@ DAQModule");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        send("Stop >> -@ Process");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        send("Stop >> -@ Storage");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                        g_config = DaqConfig();
+                        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
+                        if (!g_config.loadFromJson(cfgPath)) {
+                            std::cerr << "[main] Failed to reload " << cfgPath << "\n";
+                            continue;
+                        }
+                        distributeConfig(false);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
+                        continue;
+                    }
+                    std::cout << "[main] Sending: " << line << std::endl;
+                    send(line);
+                } else if (c != '\r') {
+                    rbuf += c;
+                }
             }
-            if (line == "start") {
-                send("Start >> -@ Storage");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Start >> -@ Process");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Start >> -@ DAQModule");
-                continue;
-            }
-            if (line == "stop") {
-                send("Stop >> -@ DAQModule");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Stop >> -@ Process");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Stop >> -@ Storage");
-                continue;
-            }
-            if (line == "enablesave") {
-                send("EnableSave >> -@ Storage");
-                continue;
-            }
-            if (line == "disablesave") {
-                send("DisableSave >> -@ Storage");
-                continue;
-            }
-            if (line == "status") {
-                printStatus(daq, process, storage);
-                continue;
-            }
-            if (line == "reload") {
-                std::cout << "[main] Reloading...\n";
-                send("Stop >> -@ DAQModule");
-                send("Stop >> -@ Process");
-                send("Stop >> -@ Storage");
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                loadConfig();
-                sendDaqInit();
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                distributeConfig();
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
-                continue;
-            }
-            std::cout << "[main] Sending: " << line << std::endl;
-            send(line);
         }
     });
 
@@ -209,41 +234,43 @@ int main() {
         if (g_reload.exchange(false)) {
             std::cout << "[main] Reloading (via IPC)...\n";
             send("Stop >> -@ DAQModule");
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             send("Stop >> -@ Process");
             send("Stop >> -@ Storage");
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            loadConfig();
-            sendDaqInit();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            distributeConfig();
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
+            distributeConfig(false);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            send("Start >> -@ DAQModule");
+            std::cout << "[main] Reload done\n";
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
     std::cout << "\n[main] Shutting down...\n";
-
     send("Stop >> -@ DAQModule");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Stop >> -@ Process");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     send("Stop >> -@ Storage");
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    send("CloseHW >> -@ DAQModule");
+    for (int i = 0; i < 50 && storage.isDraining(); i++)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    process.stop();
+    storage.stop();
+    daq.stop();
+    ipc.stop();
 
     std::cin.setstate(std::ios::eofbit);
     close(STDIN_FILENO);
 
-    ipc.stop();
-    daq.stop();
-    process.stop();
-    storage.stop();
+    std::thread watchdog([] {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::cerr << "[main] FORCE EXIT after 5s timeout\n";
+        _exit(1);
+    });
+    watchdog.detach();
 
-    printStatus(daq, process, storage);
     bus.shutdown();
 
     if (cli.joinable())
         cli.join();
+    std::cout << "[main] exited cleanly.\n";
     return 0;
 }
