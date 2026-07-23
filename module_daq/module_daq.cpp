@@ -352,7 +352,8 @@ bool ModuleDAQ::onStart() {
         std::cout << "[ModuleDAQ] ch" << slot.ch << " (id=" << i << ") recv started\n";
     }
 
-    // ── 3010 trigger ON ────────────────────────────────────
+    // ── 3010 trigger ON（等所有通道启动稳定再开触发） ────
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     setTriggerOutput(true);
     std::cout << "[ModuleDAQ] 3010 trigger enabled\n";
 
