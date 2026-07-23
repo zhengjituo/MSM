@@ -21,5 +21,6 @@ add_subdirectory(module_storage)
 add_subdirectory(module_simsource)
 
 # ── Main executables ──
-add_subdirectory(module_main_v1)   # msm_cli_simsrc, msm_cli_hwdaq, msm_ipc_shell
-add_subdirectory(module_main_v3)   # msm_webui (IPC-to-HTTP bridge)
+add_subdirectory(main_cli)   # msm_cli_simsrc, msm_cli_hwdaq, msm_ipc_shell
+
+add_subdirectory(main_webui)   # msm_webui (IPC-to-HTTP bridge)

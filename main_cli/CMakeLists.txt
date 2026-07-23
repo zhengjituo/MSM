@@ -1,4 +1,4 @@
-set(TARGET_DIR ${CMAKE_SOURCE_DIR}/module_main_v1/build)
+set(TARGET_DIR ${CMAKE_SOURCE_DIR}/main_cli/build)
 
 add_executable(msm_cli_simsrc main_simsrc.cpp)
 set_target_properties(msm_cli_simsrc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})

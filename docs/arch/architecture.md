@@ -38,5 +38,5 @@ SimDAQ / ModuleDAQ（产生帧）
 | 处理（全帧） | `module_process_full/` | 全帧提取 + 跨通道对齐检查 |
 | 存盘 | `module_storage/` | fwrite 自动 rotate |
 | 仿真 | `module_sim/` | 虚拟帧发生器 |
-| main v1 | `module_main_v1/` | 仿真 + 硬件采集入口（CLI + IPC） |
-| main v3 | `module_main_v3/` | WebUI（IPC-to-HTTP 桥接） |
+| main_cli | `main_cli/` | 仿真 + 硬件采集入口（CLI + IPC） |
+| main_webui | `main_webui/` | WebUI（IPC-to-HTTP 桥接） |

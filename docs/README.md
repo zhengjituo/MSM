@@ -29,9 +29,9 @@
 
 ## 当前版本状态（task 007）
 
-- **V1 CLI (module_main_v1)** — 稳定。CLI + IPC 交互，支持 Storage 录盘
+- **main_cli** — 稳定。CLI + IPC 交互，支持 Storage 录盘
   - `msm_cli_hwdaq` + `msm_ipc_shell` + `msm_cli_simsrc`
-- **V3 WebUI (module_main_v3)** — 开发中。IPC-to-HTTP 桥接 + Web GUI
+- **main_webui** — 开发中。IPC-to-HTTP 桥接 + Web GUI
 
 ## P4 — archive/（历史/非核心）
 
