@@ -18,12 +18,12 @@ h1 { color: #00d4ff; font-size: 22px; margin-bottom: 16px; display: flex; align-
 .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .toolbar label { color: #a0a0b0; font-size: 13px; }
 .toolbar input[type=checkbox] { width: 16px; height: 16px; }
-.toolbar input[type=number] { width: 70px; padding: 4px 6px; border-radius: 4px; border: 1px solid #0f3460; background: #0a0a1a; color: #4ae0a0; font-size: 13px; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
 th, td { padding: 5px 10px; text-align: right; border-bottom: 1px solid #0f3460; font-variant-numeric: tabular-nums; }
 th { color: #a0a0b0; font-weight: 500; text-align: center; background: #16213e; }
 td { color: #4ae0a0; }
 td:first-child, th:first-child { text-align: left; color: #e0e0e0; }
+h2 { color: #00d4ff; font-size: 15px; margin: 14px 0 6px; }
 #statusBar { margin-top: 12px; font-size: 12px; color: #606080; display: flex; gap: 16px; align-items: center; }
 #toast { position: fixed; bottom: 20px; right: 20px; background: #0a0a1a; border: 1px solid #00d4ff; border-radius: 6px; padding: 8px 14px; font-size: 12px; color: #00d4ff; opacity: 0; transition: opacity .3s; pointer-events: none; }
 #toast.show { opacity: 1; }
@@ -34,7 +34,6 @@ td:first-child, th:first-child { text-align: left; color: #e0e0e0; }
 <h1>
   MSM DAQ
   <span id="indDaq" class="indicator off"></span>
-  <span id="indProc" class="indicator off"></span>
   <span id="indSave" class="indicator off"></span>
   <span style="font-size:12px;color:#606080" id="fpsDisplay">0 fps</span>
 </h1>
@@ -44,18 +43,17 @@ td:first-child, th:first-child { text-align: left; color: #e0e0e0; }
   <button class="btn btn-start" id="btnStart" onclick="doStart()">▶ Start</button>
   <button class="btn btn-stop" id="btnStop" onclick="doStop()">■ Stop</button>
   <button class="btn btn-reload" onclick="doReload()">↻ Reload</button>
-  <span style="width:1px;height:20px;background:#0f3460;"></span>
-  <label>Frame index: <input type="number" id="frameIndex" value="0" min="0" max="9999" onchange="setFrameIndex()"></label>
 </div>
 
+<h2>Frame Summary</h2>
 <table>
-  <thead><tr><th>Ch</th><th>DAQ帧</th><th>Process</th><th>Batches</th><th>Saved</th><th>TrigID</th><th>BunchID</th></tr></thead>
+  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th>Storage</th></tr></thead>
   <tbody id="chTable"></tbody>
 </table>
 
 <div id="statusBar">
   <span id="statusText">connecting...</span>
-  <span id="batchText"></span>
+  <span id="chCount"></span>
   <span id="updateTime"></span>
 </div>
 <div id="toast"></div>
@@ -84,16 +82,15 @@ function connectSSE() {
   };
   evtSource.onerror = function() {
     document.getElementById('statusText').textContent = 'disconnected';
-    document.getElementById('statusText').style.color = '#e04a4a';
     setTimeout(connectSSE, 2000);
   };
 }
 
 function render(d) {
   const now = Date.now();
+  const anyData = d.channels && d.channels.some(c => c.daq_frames > 0);
   document.getElementById('indDaq').className = 'indicator ' + (d.running ? 'on' : 'off');
-  document.getElementById('indProc').className = 'indicator ' + (d.channels.some(c => c.processed > 0) ? 'on' : 'off');
-  document.getElementById('indSave').className = 'indicator ' + (d.channels.some(c => c.saved > 0) ? 'on' : 'off');
+  document.getElementById('indSave').className = 'indicator ' + (d.save_enabled ? 'on' : 'off');
 
   document.getElementById('saveCheck').checked = d.save_enabled;
   document.getElementById('saveCheck').disabled = d.running;
@@ -101,40 +98,37 @@ function render(d) {
   document.getElementById('btnStart').disabled = d.running;
   document.getElementById('btnStop').disabled = !d.running;
 
-  // Sync frame index (don't override user edit)
-  const fi = document.getElementById('frameIndex');
-  if (parseInt(fi.value) !== d.frame_index && !fi.dataset.userEdit) {
-    fi.value = d.frame_index;
-  }
-
   const tbody = document.getElementById('chTable');
   let html = '';
-  let total = 0;
-  for (let i = 0; i < d.channels.length; i++) {
+  let totalDaq = 0;
+  for (let i = 0; i < (d.channels || []).length; i++) {
     const ch = d.channels[i];
-    total += ch.daq_frames || 0;
+    totalDaq += ch.daq_frames || 0;
     html += '<tr><td>CH' + (i+1) + '</td>'
          + '<td>' + (ch.daq_frames || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.processed || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.batches || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.saved || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.trig_id || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.bunch_id || 0).toLocaleString() + '</td></tr>';
+         + '<td>' + (ch.proc_frames || 0).toLocaleString() + '</td>'
+         + '<td>' + (ch.proc_batches || 0).toLocaleString() + '</td>'
+         + '<td>' + (ch.saved_frames || 0).toLocaleString() + '</td></tr>';
   }
   tbody.innerHTML = html;
 
-  // FPS
+  // FPS (based on DAQ frames)
   const dt = (now - prevTime) / 1000;
-  if (dt > 0 && prevFrames.length > 0) {
-    const fps = (total - prevFrames.reduce((a,b)=>a+b,0)) / dt;
+  if (dt > 0 && prevFrames.length > 0 && d.channels) {
+    const curFrames = d.channels.map(c => c.daq_frames || 0);
+    const prevSum = prevFrames.reduce((a,b)=>a+b, 0);
+    const curSum = curFrames.reduce((a,b)=>a+b, 0);
+    const fps = (curSum - prevSum) / dt;
     document.getElementById('fpsDisplay').textContent = fps.toFixed(0) + ' fps';
+    prevFrames = curFrames;
+  } else if (d.channels) {
+    prevFrames = d.channels.map(c => c.daq_frames || 0);
   }
-  prevFrames = d.channels.map(c => c.daq_frames || 0);
   prevTime = now;
 
   document.getElementById('statusText').textContent = d.running ? 'running' : 'stopped';
   document.getElementById('statusText').style.color = d.running ? '#4ae0a0' : '#e04a4a';
-  document.getElementById('batchText').textContent = d.channels.length + 'ch';
+  document.getElementById('chCount').textContent = (d.channels || []).length + 'ch';
   document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
 }
 
@@ -157,17 +151,9 @@ function toggleSave() {
   post(cb.checked ? 'enablesave' : 'disablesave');
 }
 
-function setFrameIndex() {
-  const fi = document.getElementById('frameIndex');
-  fi.dataset.userEdit = '1';
-  post('SetFrameIndex >> index=' + fi.value + ' -@ Process');
-  setTimeout(() => delete fi.dataset.userEdit, 2000);
-}
-
 // Initial load
 fetch('/api/status').then(r=>r.json()).then(d => {
   render({...d, channels: d.channels || []});
-  document.getElementById('frameIndex').value = d.frame_index || 0;
 }).catch(() => {});
 
 connectSSE();
