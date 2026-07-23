@@ -276,10 +276,7 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "TrigPolarity", chCfg.trig_polarity.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigPosition", chCfg.trig_position.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigWindowStart", chCfg.trig_window_start.c_str());
-            {
-                int delay = std::stoi(chCfg.trig_delay_time) + 1600;
-                CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime", std::to_string(delay).c_str());
-            }
+            CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime", chCfg.trig_delay_time.c_str());
             CxDeviceSetChannelValue(hCard, ch, "ExternalTrigPolarity", chCfg.external_trig_polarity.c_str());
             CxDeviceSetChannelValue(hCard, ch, "DeadTime", chCfg.dead_time.c_str());
             CxDeviceSetChannelValue(hCard, ch, "FiniteTrigNum", chCfg.finite_trig_num.c_str());
