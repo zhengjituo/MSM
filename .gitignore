@@ -8,7 +8,6 @@ module_process_full/build/
 module_storage/build/
 module_simsource/build/
 module_main_v1/build/
-module_main_v2/build/
 module_main_v3/build/
 
 # Compiled test/utility binaries in source tree
