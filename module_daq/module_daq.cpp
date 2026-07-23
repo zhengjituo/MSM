@@ -9,6 +9,9 @@
 #include <thread>
 #include <csignal>
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <climits>
 
 
 ModuleDAQ::ModuleDAQ()
@@ -203,6 +206,22 @@ void ModuleDAQ::onReadConfig(const msm::Json& data) {
     }
 }
 
+// ── EPICS 固定点小数 → 十六进制 ──────────────────────────
+static std::string fixedPointHex2(double value) {
+    // Q16.16: multiply by 2^16
+    int64_t scaled = (int64_t)std::llround(value * 65536.0);
+    uint32_t u = (uint32_t)(int32_t)std::max(std::min(scaled, (int64_t)INT_MAX), (int64_t)INT_MIN);
+    char buf[16]; snprintf(buf, sizeof(buf), "0x%08X", u);
+    return buf;
+}
+static std::string fixedPointHex3(double value) {
+    // Q8.24: multiply by 2^24
+    int64_t scaled = (int64_t)std::llround(value * 16777216.0);
+    uint32_t u = (uint32_t)(int32_t)std::max(std::min(scaled, (int64_t)INT_MAX), (int64_t)INT_MIN);
+    char buf[16]; snprintf(buf, sizeof(buf), "0x%08X", u);
+    return buf;
+}
+
 // ── UpdateConfig：将 DAQ_Config 推送到硬件通道寄存器 ─────
 bool ModuleDAQ::updateConfig() {
     if (!hwReady_.load()) {
@@ -252,14 +271,49 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "TrigLength", chCfg.trig_length.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigPulseWidth", chCfg.trig_pulse_width.c_str());
             CxDeviceSetChannelValue(hCard, ch, "VoltageRange", chCfg.voltage_range.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "VoltageOffset", chCfg.voltage_offset.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigLevel", chCfg.trig_level.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigPolarity", chCfg.trig_polarity.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigPosition", chCfg.trig_position.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigWindowStart", chCfg.trig_window_start.c_str());
+            {
+                int delay = std::stoi(chCfg.trig_delay_time) + 1600;
+                CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime", std::to_string(delay).c_str());
+            }
+            CxDeviceSetChannelValue(hCard, ch, "ExternalTrigPolarity", chCfg.external_trig_polarity.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "DeadTime", chCfg.dead_time.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "FiniteTrigNum", chCfg.finite_trig_num.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "WorkMode", chCfg.work_mode.c_str());
             CxDeviceSetChannelValue(hCard, ch, "WaveDataEnable", chCfg.wave_data_enable.c_str());
-            std::cout << "[ModuleDAQ]   ch" << ch << " configured ("
-                      << "TrigLength=" << chCfg.trig_length
-                      << " VoltageRange=" << chCfg.voltage_range
-                      << " TrigLevel=" << chCfg.trig_level
-                      << " TrigSource=" << chCfg.trig_source
-                      << " WaveData=" << chCfg.wave_data_enable << ")\n";
+            CxDeviceSetChannelValue(hCard, ch, "ValueThresholdHigh", chCfg.value_threshold_high.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "ValueThresholdLow", chCfg.value_threshold_low.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "IpGlobalRST", chCfg.ip_global_rst.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "IpLogicRST", chCfg.ip_logic_rst.c_str());
+            if (!chCfg.k1st.empty())
+                CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionK1st",
+                    fixedPointHex3(std::stod(chCfg.k1st)).c_str());
+            if (!chCfg.b1st.empty())
+                CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionB1st",
+                    fixedPointHex3(std::stod(chCfg.b1st)).c_str());
+            // Kx/Ky/K/OffsetX/OffsetY 仅通道1
+            if (ch == 1) {
+                if (!chCfg.kx.empty())
+                    CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionKX",
+                        fixedPointHex2(std::stod(chCfg.kx)).c_str());
+                if (!chCfg.ky.empty())
+                    CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionKY",
+                        fixedPointHex2(std::stod(chCfg.ky)).c_str());
+                if (!chCfg.k.empty())
+                    CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionK",
+                        fixedPointHex2(std::stod(chCfg.k)).c_str());
+                if (!chCfg.offset_x.empty())
+                    CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionOffsetX",
+                        fixedPointHex2(std::stod(chCfg.offset_x)).c_str());
+                if (!chCfg.offset_y.empty())
+                    CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionOffsetY",
+                        fixedPointHex2(std::stod(chCfg.offset_y)).c_str());
+            }
+            std::cout << "[ModuleDAQ]   ch" << ch << " configured\n";
 
             auto& slot = activeChannels_[activeChCount_++];
             slot.cardHandle = hCard;
