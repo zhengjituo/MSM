@@ -85,6 +85,7 @@ void ModuleStorage::onConfigure(const msm::Json& data) {
 
 void ModuleStorage::onIdle() {
     if (!saveRing_) return;
+    if (frameSize_ == 0) return;
 
     size_t batchBytes = batchSize_ * frameSize_;
     size_t totalNeeded = (size_t)nCh_ * batchBytes;

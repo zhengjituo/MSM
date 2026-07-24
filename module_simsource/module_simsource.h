@@ -46,6 +46,7 @@ private:
     int nCh_ = 0;
     size_t trigLength_ = 1024;
     size_t frameSize_ = 0;
+    std::string waveDataEnable_ = "1";
     size_t framesPerCycle_ = 2000;
     size_t triggerRateHz_ = 100000;
     size_t bunchInc_ = 10;  // 1,000,000 / triggerRateHz_

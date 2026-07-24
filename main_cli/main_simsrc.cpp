@@ -109,14 +109,19 @@ int main() {
 
     {
         int trigLen = 512;
+        std::string waveData = "1";
         const auto* ch1 = g_config.getChannel(1, 1);
-        if (ch1) trigLen = std::stoi(ch1->trig_length);
+        if (ch1) {
+            trigLen = std::stoi(ch1->trig_length);
+            waveData = ch1->wave_data_enable;
+        }
 
         msm::Message simCfg("Configure");
         simCfg.setTarget("DAQModule");
         simCfg.setSender("Main");
         simCfg.data.set("NumChannels", nCh);
         simCfg.data.set("TrigLength", trigLen);
+        simCfg.data.set("WaveDataEnable", waveData);
         simCfg.data.set("FramesPerCycle", 10000);
         simCfg.data.set("TriggerRateHz", 100000);
         msm::MessageBus::instance().send(simCfg);

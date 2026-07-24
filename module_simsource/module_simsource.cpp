@@ -117,7 +117,9 @@ void ModuleSim::onConfigure(const msm::Json& data) {
 
     nCh_ = std::min(newNCh, MAX_CH);
     trigLength_ = newTrigLen;
-    frameSize_ = trigLength_ * 2 + 128;
+    if (data.contains("WaveDataEnable"))
+        waveDataEnable_ = data.get("WaveDataEnable");
+    frameSize_ = (waveDataEnable_ == "0") ? 128 : trigLength_ * 2 + 128;
     framesPerCycle_ = newFrames;
     triggerRateHz_ = newRate;
     idleDelayMs_ = std::max<size_t>(1, framesPerCycle_ * 1000 / triggerRateHz_);
@@ -135,6 +137,7 @@ void ModuleSim::onConfigure(const msm::Json& data) {
     std::cout << "[DAQModule] configured: " << nCh_ << "ch"
               << " trigLen=" << trigLength_
               << " frameSize=" << frameSize_
+              << " wde=" << waveDataEnable_
               << " fps=" << (framesPerCycle_ * 1000 / idleDelayMs_)
               << " bunchInc=" << bunchInc_
               << " (" << triggerRateHz_ / 1000.0 << " kHz)\n";
