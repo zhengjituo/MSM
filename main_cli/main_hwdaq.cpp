@@ -98,7 +98,7 @@ int main() {
     auto& bus = msm::MessageBus::instance();
 
     {
-        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
+        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
         if (!g_config.loadFromJson(cfgPath)) {
             std::cerr << "[main] Failed to load " << cfgPath << "\n";
             return 1;
@@ -242,7 +242,7 @@ int main() {
                         send("Stop >> -@ Storage");
                         std::this_thread::sleep_for(std::chrono::milliseconds(500));
                         g_config = DaqConfig();
-                        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/module_daq/config/app_initial_config.json";
+                        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
                         if (!g_config.loadFromJson(cfgPath)) {
                             std::cerr << "[main] Failed to reload " << cfgPath << "\n";
                             continue;
