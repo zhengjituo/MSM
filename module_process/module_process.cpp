@@ -340,7 +340,6 @@ void ModuleProcess::doConsumeOnce() {
         totalNeeded += batchSize_ * flen;
     }
     if (saveRing_ && saveRing_->availableSpace() < totalNeeded) {
-        std::cout << "[" << name_ << "] saveRing full, skip cycle\n";
         return;
     }
 

@@ -105,7 +105,20 @@ int main() {
         }
     }
 
+    int nCh = 0;
+    for (const auto& card : g_config.cards)
+        for (const auto& ch : card.channels)
+            if (ch.runEnable) nCh++;
+    if (nCh == 0) nCh = 4;
+
+    size_t frameSize = g_config.frame_size;
+    if (frameSize == 0) frameSize = 1152;
+    std::vector<UserCircularBuffer*> daqRings;
+    for (int i = 0; i < nCh; i++)
+        daqRings.push_back(new UserCircularBuffer(256U * 1024U * 1024U, frameSize));
+
     ModuleDAQ daq;
+    daq.setRings(daqRings);
     bus.registerModule(&daq);
     daq.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -118,14 +131,17 @@ int main() {
     bus.registerModule(&ipc);
     ipc.start();
 
-    // Init DAQ: ReadConfig → InitHW → UpdateConfig (rings allocated after this)
-    distributeConfig();
+    {
+        msm::Message daqMsg("Init");
+        daqMsg.data.data = g_config.toKeyValues();
+        daqMsg.setTarget("DAQModule");
+        daqMsg.setSender("Main");
+        msm::MessageBus::instance().send(daqMsg);
+    }
     while (!daq.isConfigured())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    std::vector<UserCircularBuffer*> allRings;
-    for (int i = 0; i < daq.getRingCount(); i++)
-        allRings.push_back(daq.getRing(i));
+    std::vector<UserCircularBuffer*> allRings = daqRings;
 
     UserCircularBuffer saveRing(256 * 1024 * 1024, 4096);
 
@@ -140,6 +156,21 @@ int main() {
     process.start();
     storage.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Configure Process/Storage (must be after register)
+    send("Configure >> BatchSize=10000, FrameSize=" + std::to_string(g_config.frame_size) + ", StorageTarget=Storage -@ Process");
+    send("Configure >> SavePath=" + g_config.data_save_path
+         + ", FelName=" + g_config.fel_name
+         + ", SystemName=" + g_config.system_name
+         + ", DeviceName=" + g_config.device_name
+         + ", FileType=" + g_config.file_type
+         + ", MaxSaveSizeMB=" + std::to_string(g_config.max_save_size_mb)
+         + ", ExpNo=" + std::to_string(g_config.exp_no)
+         + ", RunSerial=" + g_config.run_serial
+         + ", BatchSize=10000"
+         + ", FrameSize=" + std::to_string(g_config.frame_size)
+         + ", Slot=" + std::to_string(g_config.slot)
+         + " -@ Storage");
 
     while (!daq.isHwReady())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

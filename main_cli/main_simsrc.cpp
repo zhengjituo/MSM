@@ -103,7 +103,14 @@ int main() {
             if (ch.runEnable) nCh++;
     if (nCh == 0) nCh = 4;
 
+    size_t frameSize = g_config.frame_size;
+    if (frameSize == 0) frameSize = 1152;
+    std::vector<UserCircularBuffer*> simRings;
+    for (int i = 0; i < nCh; i++)
+        simRings.push_back(new UserCircularBuffer(256U * 1024U * 1024U, frameSize));
+
     ModuleSim sim;
+    sim.setRings(simRings);
     bus.registerModule(&sim);
     sim.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));

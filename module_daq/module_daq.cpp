@@ -23,8 +23,6 @@ ModuleDAQ::ModuleDAQ()
 
 ModuleDAQ::~ModuleDAQ() {
     stop();
-    for (auto* r : rings_) delete r;
-    rings_.clear();
 }
 
 msm::ModuleVars* ModuleDAQ::getVars() {
@@ -185,25 +183,8 @@ void ModuleDAQ::onReadConfig(const msm::Json& data) {
         }
     }
 
-    // 如果有结构性变更（card/channel 数量变化），重建 ring
-    if (needRingCreate && !configured_.load()) {
-        for (auto* r : rings_) delete r;
-        rings_.clear();
-
-        int totalCh = 0;
-        for (const auto& cardCfg : config_.cards) {
-            if (cardCfg.card_type != "1073") continue;
-            for (const auto& chCfg : cardCfg.channels)
-                if (chCfg.runEnable) totalCh++;
-        }
-        if (totalCh > MAX_CH) totalCh = MAX_CH;
-
-        for (int i = 0; i < totalCh; i++)
-            rings_.push_back(new UserCircularBuffer(256U * 1024U * 1024U, 384));
-
+    if (needRingCreate)
         configured_ = true;
-        std::cout << "[ModuleDAQ] Config loaded: " << totalCh << " ring(s)\n";
-    }
 }
 
 // ── 固定点小数 → 十六进制（抄自 card_parameter_define.cpp） ──

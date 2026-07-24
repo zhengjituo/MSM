@@ -20,6 +20,7 @@ public:
     void onIdle() override;
     msm::ModuleVars* getVars() override;
 
+    void setRings(const std::vector<UserCircularBuffer*>& rings) { rings_ = rings; }
     UserCircularBuffer* getRing(int idx);
     int getRingCount() const { return (int)rings_.size(); }
 

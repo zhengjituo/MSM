@@ -24,7 +24,7 @@ ModuleStorage::ModuleStorage(UserCircularBuffer* saveRing,
                   << MAX_CH << ", truncating\n";
         nCh_ = MAX_CH;
     }
-    idleDelayMs_ = 50;
+    idleDelayMs_ = 10;
     readBuf_.resize(64U * 1024U * 1024U);
     registerVars();
 }

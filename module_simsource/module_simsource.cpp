@@ -46,8 +46,6 @@ ModuleSim::ModuleSim()
 
 ModuleSim::~ModuleSim() {
     stop();
-    for (auto* r : rings_) delete r;
-    rings_.clear();
 }
 
 msm::ModuleVars* ModuleSim::getVars() {
@@ -126,11 +124,8 @@ void ModuleSim::onConfigure(const msm::Json& data) {
     bunchInc_ = std::max<size_t>(1, 1000000 / triggerRateHz_);
     frameBuf_.resize(frameSize_);
 
-    for (auto* r : rings_) delete r;
-    rings_.clear();
-
-    for (int i = 0; i < nCh_; i++)
-        rings_.push_back(new UserCircularBuffer(256U * 1024U * 1024U, frameSize_));
+    for (auto* r : rings_)
+        r->setExpectedPacketSize(frameSize_);
     nextTrigId_ = 1;
     nextBunchId_ = 1;
 
