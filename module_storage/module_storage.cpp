@@ -178,72 +178,71 @@ void ModuleStorage::onIdle() {
         return;
     }
 
-    if (avail < totalNeeded)
-        return;
+    while (saveRing_->availableDataSize() >= totalNeeded) {
+        if (readBuf_.size() < totalNeeded)
+            readBuf_.resize(totalNeeded);
 
-    if (readBuf_.size() < totalNeeded)
-        readBuf_.resize(totalNeeded);
+        size_t got = saveRing_->readData(readBuf_.data(), totalNeeded);
+        if (got < totalNeeded) break;
 
-    size_t got = saveRing_->readData(readBuf_.data(), totalNeeded);
-    if (got < totalNeeded) return;
+        int64_t curBatch = files_[0].framesConsumed.load() / (int64_t)batchSize_ + 1;
 
-    int64_t curBatch = files_[0].framesConsumed.load() / (int64_t)batchSize_ + 1;
-
-    for (int i = 0; i < nCh_; i++) {
-        const uint8_t* chData = readBuf_.data() + i * batchBytes;
-        auto& f = files_[i];
-        int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
-
-        uint32_t firstTrig = 0;
-        uint64_t firstBunch = 0;
-        size_t cnt = 0;
-        if (chData[0] == 0xEB && chData[1] == 0x91 && frameSize_ >= 72) {
-            firstTrig = readU32BE(chData + 17);
-            firstBunch = parseBunchID(chData, frameSize_);
-            cnt = batchSize_;
-        }
-        std::cout << "[Storage] ch" << chPhys
-                  << " batch=" << curBatch
-                  << " trig_id=" << firstTrig
-                  << " bunch_id=" << firstBunch
-                  << " cnt=" << cnt
-                  << "\n";
-
-        if (!f.fp) continue;
-
-        if (!f.hasFirstBunch) {
-            f.firstBunchID = parseBunchID(chData, frameSize_);
-            f.hasFirstBunch = true;
-        }
-
-        const uint8_t* lastFrame = chData + (batchSize_ - 1) * frameSize_;
-        f.lastBunchID = parseBunchID(lastFrame, frameSize_);
-
-        size_t written = fwrite(chData, 1, batchBytes, f.fp);
-        if (written != batchBytes) {
-            std::cerr << "[Storage] ch" << (i + 1) << " write error: "
-                      << strerror(errno) << "\n";
-            continue;
-        }
-        f.bytesWritten += written;
-        f.framesConsumed.fetch_add((int64_t)batchSize_);
-        f.bytesSaved.fetch_add((int64_t)written);
-    }
-
-    bool anyRotate = false;
-    size_t limitBytes = maxSaveSizeMB_ * 1024ULL * 1024ULL;
-    if (maxSaveSizeMB_ > 0) {
         for (int i = 0; i < nCh_; i++) {
-            if (files_[i].bytesWritten >= limitBytes) {
-                anyRotate = true;
-                break;
+            const uint8_t* chData = readBuf_.data() + i * batchBytes;
+            auto& f = files_[i];
+            int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
+
+            uint32_t firstTrig = 0;
+            uint64_t firstBunch = 0;
+            size_t cnt = 0;
+            if (chData[0] == 0xEB && chData[1] == 0x91 && frameSize_ >= 72) {
+                firstTrig = readU32BE(chData + 17);
+                firstBunch = parseBunchID(chData, frameSize_);
+                cnt = batchSize_;
+            }
+            std::cout << "[Storage] ch" << chPhys
+                      << " batch=" << curBatch
+                      << " trig_id=" << firstTrig
+                      << " bunch_id=" << firstBunch
+                      << " cnt=" << cnt
+                      << "\n";
+
+            if (!f.fp) continue;
+
+            if (!f.hasFirstBunch) {
+                f.firstBunchID = parseBunchID(chData, frameSize_);
+                f.hasFirstBunch = true;
+            }
+
+            const uint8_t* lastFrame = chData + (batchSize_ - 1) * frameSize_;
+            f.lastBunchID = parseBunchID(lastFrame, frameSize_);
+
+            size_t written = fwrite(chData, 1, batchBytes, f.fp);
+            if (written != batchBytes) {
+                std::cerr << "[Storage] ch" << (i + 1) << " write error: "
+                          << strerror(errno) << "\n";
+                continue;
+            }
+            f.bytesWritten += written;
+            f.framesConsumed.fetch_add((int64_t)batchSize_);
+            f.bytesSaved.fetch_add((int64_t)written);
+        }
+
+        bool anyRotate = false;
+        size_t limitBytes = maxSaveSizeMB_ * 1024ULL * 1024ULL;
+        if (maxSaveSizeMB_ > 0) {
+            for (int i = 0; i < nCh_; i++) {
+                if (files_[i].bytesWritten >= limitBytes) {
+                    anyRotate = true;
+                    break;
+                }
             }
         }
-    }
-    if (anyRotate) {
-        std::lock_guard<std::mutex> lock(fileMtx_);
-        for (int i = 0; i < nCh_; i++)
-            rotateFile(i);
+        if (anyRotate) {
+            std::lock_guard<std::mutex> lock(fileMtx_);
+            for (int i = 0; i < nCh_; i++)
+                rotateFile(i);
+        }
     }
 }
 
