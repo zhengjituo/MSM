@@ -127,7 +127,7 @@ int main() {
     for (int i = 0; i < daq.getRingCount(); i++)
         allRings.push_back(daq.getRing(i));
 
-    UserCircularBuffer saveRing(64 * 1024 * 1024, 4096);
+    UserCircularBuffer saveRing(256 * 1024 * 1024, 4096);
 
     std::vector<int> physCh;
     for (int i = 0; i < daq.getRingCount(); i++)

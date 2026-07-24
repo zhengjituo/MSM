@@ -63,6 +63,7 @@ static void loadConfig() {
         std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
         return;
     }
+    g_config.slot = 0; // simsrc 无实际硬件，slot 用 0
     std::cout << "[main] Config loaded\n";
 }
 
@@ -140,7 +141,7 @@ int main() {
     bus.registerModule(&ipc);
     ipc.start();
 
-    UserCircularBuffer saveRing(64 * 1024 * 1024, 4096);
+    UserCircularBuffer saveRing(256 * 1024 * 1024, 4096);
 
     std::vector<int> physCh;
     for (int i = 0; i < nCh; i++)
