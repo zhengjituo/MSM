@@ -55,8 +55,9 @@ struct ChannelConfig {
     std::string ip_global_rst = "0";
     std::string ip_logic_rst = "0";
 
-    // 帧长 = TrigLength * 2 + 128 (from card_parameter_define.h)
+    // 帧长 = header(64) + (WaveDataEnable ? TrigLength*2 : 0) + trailer(64)
     int GetFrameLength() const {
+        if (wave_data_enable == "0" || wave_data_enable == "false") return 128;
         return std::stoi(trig_length) * 2 + 128;
     }
 
@@ -101,7 +102,7 @@ struct DaqConfig {
     int exp_no = 1;
     std::string run_serial = "r00001";
     int slot = 0;
-    size_t frame_size = 1152;
+    size_t frame_size = 0;   // 由 loadFromJsonString 从 GetFrameLength() 自动推导
     int trig_delay_time_fix = 1600;
 
     bool loadFromJson(const std::string& path);

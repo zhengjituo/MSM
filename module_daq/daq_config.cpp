@@ -145,7 +145,6 @@ bool DaqConfig::loadFromJsonString(const std::string& json) {
         exp_no = findInt(app, "expNo", 1);
         run_serial = findValue(app, "runSerial");
         if (run_serial.empty()) run_serial = "r00001";
-        frame_size = (size_t)findInt(app, "frameSize", 1152);
         trig_delay_time_fix = findInt(app, "trigDelayTimeFix", 1600);
     }
 
@@ -227,6 +226,16 @@ bool DaqConfig::loadFromJsonString(const std::string& json) {
     // Derive slot from first card
     if (slot == 0 && !cards.empty())
         slot = cards[0].slot;
+
+    // Derive frame_size from first active 1073 channel's GetFrameLength()
+    for (const auto& c : cards) {
+        if (c.card_type == "1073" && !c.channels.empty()) {
+            frame_size = (size_t)c.channels[0].GetFrameLength();
+            break;
+        }
+    }
+    if (frame_size == 0)
+        frame_size = 128;
 
     std::cout << "[DaqConfig] loaded " << cards.size() << " card(s)\n";
     for (const auto& c : cards) {

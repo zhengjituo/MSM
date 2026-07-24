@@ -60,7 +60,7 @@ private:
     int expNo_ = 1;
     std::string runSerial_ = "r00001";
     size_t batchSize_ = 10000;
-    size_t frameSize_ = 1152;
+    size_t frameSize_ = 0;
 
     // Per-channel state
     struct ChFile {
