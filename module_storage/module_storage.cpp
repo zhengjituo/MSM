@@ -91,7 +91,7 @@ void ModuleStorage::onIdle() {
     size_t totalNeeded = (size_t)nCh_ * batchBytes;
     size_t avail = saveRing_->availableDataSize();
 
-    if (!recording_.load() && !draining_.load()) {
+    if (!recording_.load() && !flushing_.load()) {
         if (avail > 0) {
             if (readBuf_.size() < avail)
                 readBuf_.resize(avail);
@@ -105,9 +105,9 @@ void ModuleStorage::onIdle() {
         return;
     }
 
-    if (draining_.load()) {
+    if (flushing_.load()) {
         if (avail > 0) {
-            drainHadData_ = true;
+            flushHadData_ = true;
             while (avail >= totalNeeded) {
                 if (readBuf_.size() < totalNeeded)
                     readBuf_.resize(totalNeeded);
@@ -165,7 +165,7 @@ void ModuleStorage::onIdle() {
             }
         }
         if (avail == 0) {
-            draining_ = false;
+            flushing_ = false;
             recording_ = false;
             {
                 std::lock_guard<std::mutex> lock(fileMtx_);
@@ -175,7 +175,7 @@ void ModuleStorage::onIdle() {
             for (int ci = 0; ci < nCh_ && ci < MAX_CH; ci++)
                 std::cout << " ch" << (ci + 1) << "=" << files_[ci].framesConsumed.load();
             std::cout << "\n";
-            drainHadData_ = false;
+            flushHadData_ = false;
         }
         return;
     }
@@ -289,7 +289,7 @@ void ModuleStorage::onDisableSave() {
 }
 
 void ModuleStorage::onStop() {
-    draining_ = true;
+    flushing_ = true;
     std::cout << "[Storage] Flushing remaining data...\n";
 }
 

@@ -130,7 +130,7 @@ void ModuleProcess::setFrameIndex(int idx) {
 }
 
 void ModuleProcess::onIdle() {
-    if ((consuming_.load() || draining_.load()) && !emergencyStop_.load()) {
+    if ((consuming_.load() || flushing_.load()) && !emergencyStop_.load()) {
         doConsumeOnce();
     }
 }
@@ -174,7 +174,7 @@ void ModuleProcess::onConfigure(const msm::Json& data) {
 
 void ModuleProcess::onStart() {
     emergencyStop_ = false;
-    draining_ = false;
+    flushing_ = false;
     for (int i = 0; i < nCh_; i++) {
         processedFrames_[i].store(0);
         processedBatches_[i].store(0);
@@ -193,18 +193,18 @@ void ModuleProcess::onStart() {
 }
 
 void ModuleProcess::onStop() {
-    if (draining_.load() || emergencyStop_.load())
+    if (flushing_.load() || emergencyStop_.load())
         return;
     consuming_ = false;
-    draining_ = true;
+    flushing_ = true;
     std::cout << "[" << name_ << "] Draining remaining frames...\n";
     // keep doConsumeOnce running until ring is empty
-    // emergencyStop_ set by doConsumeOnce when drain completes
+    // emergencyStop_ set by doConsumeOnce when flush completes
 }
 
 void ModuleProcess::onStopImmediate() {
     consuming_ = false;
-    draining_ = false;
+    flushing_ = false;
     emergencyStop_ = true;
     std::cout << "[" << name_ << "] Stopped";
     for (int i = 0; i < nCh_; i++) {
@@ -284,7 +284,7 @@ void ModuleProcess::doConsumeOnce() {
     if (emergencyStop_.load()) return;
 
     // Drain mode: read ALL remaining frames from all channels, any amount
-    if (draining_.load()) {
+    if (flushing_.load()) {
         bool allEmpty = true;
         for (int i = 0; i < nCh_; i++) {
             if (!rings_[i]) continue;
@@ -307,12 +307,12 @@ void ModuleProcess::doConsumeOnce() {
             processedFrames_[i].fetch_add(actualFrames);
             lastWritePos_[i].store(lastWritePos_[i].load() + got);
             std::cout << "[" << name_ << "] ch" << (i + 1)
-                      << " drain=" << actualFrames << " -> saveRing\n";
+                      << " flush=" << actualFrames << " -> saveRing\n";
         }
         if (allEmpty) {
-            draining_ = false;
+            flushing_ = false;
             emergencyStop_ = true;
-            std::cout << "[" << name_ << "] drain done:";
+            std::cout << "[" << name_ << "] flush done:";
             for (int i = 0; i < nCh_; i++)
                 std::cout << " ch" << (i + 1) << "=" << processedFrames_[i].load();
             std::cout << std::endl;

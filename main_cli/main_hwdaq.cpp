@@ -217,7 +217,7 @@ int main() {
                         send("Stop >> -@ Process");
                         std::this_thread::sleep_for(std::chrono::milliseconds(500));
                         send("Stop >> -@ Storage");
-                        for (int i = 0; i < 50 && storage.isDraining(); i++)
+                        for (int i = 0; i < 50 && storage.isFlushing(); i++)
                             std::this_thread::sleep_for(std::chrono::milliseconds(100));
                         continue;
                     }
@@ -281,7 +281,7 @@ int main() {
     send("Stop >> -@ DAQModule");
     send("Stop >> -@ Process");
     send("Stop >> -@ Storage");
-    for (int i = 0; i < 50 && storage.isDraining(); i++)
+    for (int i = 0; i < 50 && storage.isFlushing(); i++)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     process.stop();
     storage.stop();

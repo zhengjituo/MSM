@@ -74,7 +74,7 @@ private:
 
     std::atomic<bool> consuming_{false};
     std::atomic<bool> emergencyStop_{false};
-    std::atomic<bool> draining_{false};
+    std::atomic<bool> flushing_{false};
 
     size_t batchSize_ = 10000;
     size_t frameSize_ = 0;

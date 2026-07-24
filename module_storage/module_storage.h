@@ -24,7 +24,7 @@ public:
     int64_t getConsumedFrames(int ch) const;
     int64_t getSavedBytes(int ch) const;
     bool isSaveEnabled() const { return saveEnabled_.load(); }
-    bool isDraining() const { return draining_.load(); }
+    bool isFlushing() const { return flushing_.load(); }
 
 private:
     void onConfigure(const msm::Json& data);
@@ -78,8 +78,8 @@ private:
     std::string statePath_ = ".";
     int sessionId_ = 0;
     std::atomic<bool> recording_{false};
-    std::atomic<bool> draining_{false};
-    bool drainHadData_ = false;
+    std::atomic<bool> flushing_{false};
+    bool flushHadData_ = false;
     std::atomic<bool> saveEnabled_{false};
     std::mutex fileMtx_;
     std::vector<uint8_t> readBuf_;
