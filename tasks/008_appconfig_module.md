@@ -8,22 +8,49 @@ config: move app_initial_config.json to top-level config/ for shared access
 
 ## TODO
 - [ ] 创建 `module_config/` 目录及 CMakeLists.txt
+
+      cd /home/zkcx/ws/MSM_DAQ && mkdir module_config
+      # CMakeLists.txt: add_library(module_config daq_config.cpp)
+      # target_include_directories(module_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+      # 根 CMakeLists.txt 加 add_subdirectory(module_config)
+
 - [ ] 将 `module_daq/daq_config.h/cpp` 移入 `module_config/`，类名 `DaqConfig` → `AppConfig`
+
+      mv module_daq/daq_config.h module_config/app_config.h
+      mv module_daq/daq_config.cpp module_config/app_config.cpp
+      # class DaqConfig → class AppConfig
+      # 保留所有字段和 loadFromJson()，新增 saveToJson()、distribute()
+
 - [ ] AppConfig 实现：
-  - 单例或 main 持有，所有模块可见
-  - `loadFromJson()` 从 JSON 初始化
-  - `saveToJson()` 写入 `app_runtime_config.json`
-  - `distribute()` 向 DAQModule/Process/Storage 发 Configure 消息
-  - `toKeyValues()` 供 DAQModule Init 使用（保留现有 Init 流程）
+
+  - `saveToJson(path)` — 将当前配置写为 JSON，与 loadFromJson 格式对称
+  - `distribute()` — 遍历内部配置，向 DAQModule/Process/Storage 发 Configure 消息
+    - DAQModule: 调用 toKeyValues() 发 Init 或 Configure（isInit 参数）
+    - Process: BatchSize + FrameSize + StorageTarget
+    - Storage: SavePath + FelName + SystemName + DeviceName + FileType + MaxSaveSizeMB + ExpNo + RunSerial + BatchSize + FrameSize + Slot
+  - 保留 `toKeyValues()` 方法（当前 daq_config.h 已有）
+
 - [ ] main_hwdaq / main_simsrc 重构：
-  - AppConfig 替代全局 `g_config`
-  - `start` 流程：load_from_json → 配硬件 → 运行
-  - 共用的分发逻辑提到 `module_config/`，main 只负责编排
-- [ ] EPICS 桥接地基：
+
+  - 全局 `g_config` → `AppConfig` 实例
+  - `start` 流程：`appConfig.loadFromJson(runtimePath)` → `appConfig.distribute(isInit=false)` → 发 Start
+  - 提取 main_simsrc.cpp 和 main_hwdaq.cpp 中共用的分发逻辑到 AppConfig::distribute()
+  - main 只负责：创建模块、register、start、编排命令流程
+
+- [ ] 编译验证
+
+      cd /home/zkcx/ws/MSM_DAQ/main_cli/build && cmake ../.. && make -j$(nproc)
+      # msm_cli_simsrc + msm_cli_hwdaq 均通过
+
+- [ ] 短期运行测试
+
+      (echo "start"; sleep 3; echo "stop"; sleep 1; echo "quit") | ./msm_cli_simsrc
+      # trig_id 跨通道一致，无 crash
+
+- [ ] EPICS 桥接地基（可选，可后续单独 task）
+
   - `updateConfigToPV()` 接口声明
   - PV 到 AppConfig 字段的路径映射表
-- [ ] 编译验证（simsrc + hwdaq 均通过）
-- [ ] 短期运行测试：start/stop 各 3 轮，trig_id 一致
 
 ## 日志
 
