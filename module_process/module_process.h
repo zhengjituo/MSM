@@ -77,6 +77,7 @@ private:
     std::atomic<bool> draining_{false};
 
     size_t batchSize_ = 10000;
+    size_t frameSize_ = 0;
     std::string storageTarget_ = "Storage";
 
     std::array<std::atomic<int64_t>, MAX_CH> lastTrigId_{};

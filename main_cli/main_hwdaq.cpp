@@ -53,7 +53,7 @@ static void distributeConfig(bool isInit = true) {
     daqMsg.setSender("Main");
     msm::MessageBus::instance().send(daqMsg);
 
-    send("Configure >> BatchSize=10000, StorageTarget=Storage -@ Process");
+    send("Configure >> BatchSize=10000, FrameSize=" + std::to_string(g_config.frame_size) + ", StorageTarget=Storage -@ Process");
 
     send("Configure >> SavePath=" + g_config.data_save_path
          + ", FelName=" + g_config.fel_name

@@ -163,9 +163,12 @@ void ModuleProcess::handleState(const msm::Message& msg) {
 void ModuleProcess::onConfigure(const msm::Json& data) {
     if (data.contains("BatchSize"))
         batchSize_ = static_cast<size_t>(data.getInt("BatchSize"));
+    if (data.contains("FrameSize"))
+        frameSize_ = static_cast<size_t>(data.getInt("FrameSize"));
     if (data.contains("StorageTarget"))
         storageTarget_ = data.get("StorageTarget");
     std::cout << "[" << name_ << "] Configured: BatchSize=" << batchSize_
+              << " FrameSize=" << frameSize_
               << " StorageTarget=" << storageTarget_ << "\n";
 }
 
