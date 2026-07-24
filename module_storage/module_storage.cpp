@@ -99,6 +99,8 @@ void ModuleStorage::onIdle() {
             int64_t discardFrames = (int64_t)avail / (int64_t)nCh_ / (int64_t)frameSize_;
             for (int i = 0; i < nCh_; i++)
                 files_[i].framesConsumed.fetch_add(discardFrames);
+            std::cout << "[Storage] discard " << discardFrames
+                      << " frames/ch (save not enabled)\n";
         }
         return;
     }
@@ -151,13 +153,13 @@ void ModuleStorage::onIdle() {
                         else
                             f.framesConsumed.fetch_add((int64_t)(perCh / frameSize_));
                     }
-                    std::cout << "[Storage] drain saved " << (avail / nCh_ / frameSize_)
+                    std::cout << "[Storage] flush saved " << (avail / nCh_ / frameSize_)
                               << " frames/ch\n";
                 } else {
                     int64_t discardFrames = avail / (int64_t)nCh_ / (int64_t)frameSize_;
                     for (int i = 0; i < nCh_; i++)
                         files_[i].framesConsumed.fetch_add(discardFrames);
-                    std::cout << "[Storage] drain discarded " << discardFrames
+                    std::cout << "[Storage] flush discarded " << discardFrames
                               << " frames/ch (save disabled)\n";
                 }
             }
@@ -169,7 +171,7 @@ void ModuleStorage::onIdle() {
                 std::lock_guard<std::mutex> lock(fileMtx_);
                 closeFiles();
             }
-            std::cout << "[Storage] drain:";
+            std::cout << "[Storage] flush:";
             for (int ci = 0; ci < nCh_ && ci < MAX_CH; ci++)
                 std::cout << " ch" << (ci + 1) << "=" << files_[ci].framesConsumed.load();
             std::cout << "\n";
@@ -288,7 +290,7 @@ void ModuleStorage::onDisableSave() {
 
 void ModuleStorage::onStop() {
     draining_ = true;
-    std::cout << "[Storage] Draining remaining data...\n";
+    std::cout << "[Storage] Flushing remaining data...\n";
 }
 
 void ModuleStorage::onStatus(msm::Message& response) {
