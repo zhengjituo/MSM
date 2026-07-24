@@ -343,26 +343,39 @@ void ModuleProcess::doConsumeOnce() {
         return;
     }
 
+    // 先读所有通道数据到 batchBuf_（ch1,ch2..chN 顺序排列）
+    size_t totalBytes = 0;
+    size_t offsets[MAX_CH];
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
         size_t batchBytes = batchSize_ * flen;
-        if (batchBuf_.size() < batchBytes)
-            batchBuf_.resize(batchBytes);
+        offsets[i] = totalBytes;
+        totalBytes += batchBytes;
+        if (batchBuf_.size() < totalBytes)
+            batchBuf_.resize(totalBytes);
 
-        size_t got = rings_[i]->readData(batchBuf_.data(), batchBytes);
+        size_t got = rings_[i]->readData(batchBuf_.data() + offsets[i], batchBytes);
         if (got < batchBytes) {
             std::cerr << "[" << name_ << "] ch" << (i + 1)
                       << " read " << got << " < " << batchBytes << "\n";
-            continue;
+            totalBytes = 0;
+            break;
         }
+    }
 
-        // 转发原始数据到 storage_in_buffer（单 ring，多通道按 ch1..chN 顺序写入）
-        if (saveRing_) saveRing_->writeFromDevice(batchBuf_.data(), got);
+    // 一次性写入 saveRing
+    if (totalBytes > 0 && saveRing_)
+        saveRing_->writeFromDevice(batchBuf_.data(), totalBytes);
+
+    if (totalBytes == 0) return;
+
+    for (int i = 0; i < nCh_; i++) {
+        size_t flen = rings_[i]->getExpectedPacketSize();
 
         // 提取用户所选 index 的帧
         int selIdx = frameIndex_.load();
         if (selIdx >= 0 && (size_t)selIdx < batchSize_) {
-            const uint8_t* frame = batchBuf_.data() + (size_t)selIdx * flen;
+            const uint8_t* frame = batchBuf_.data() + offsets[i] + (size_t)selIdx * flen;
             extractFrame(frame, flen, i, 0);
             batchData_[i].count = 1;
             batchData_[i].batchNo = curBatch;
@@ -371,7 +384,7 @@ void ModuleProcess::doConsumeOnce() {
         size_t cnt = 0;
         uint32_t firstTrigId = 0;
         uint64_t firstBunchId = 0;
-        const uint8_t* firstFrame = batchBuf_.data();
+        const uint8_t* firstFrame = batchBuf_.data() + offsets[i];
         if (firstFrame[0] == 0xEB && firstFrame[1] == 0x91 && flen >= 72) {
             firstTrigId = readU32BE(firstFrame + 17);
             const uint8_t* trailer = firstFrame + flen - 64;
