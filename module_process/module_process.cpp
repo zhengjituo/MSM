@@ -64,7 +64,7 @@ ModuleProcess::ModuleProcess(const std::string& name,
         batchData_[i].y.reserve(batchSize_);
         batchData_[i].i.reserve(batchSize_);
     }
-    idleDelayMs_ = 50;
+    idleDelayMs_ = 10;
     batchBuf_.resize(4096);
     registerVars();
 }
