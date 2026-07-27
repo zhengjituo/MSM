@@ -1,86 +1,105 @@
-# Task 008 — AppConfig 配置管理模块
+# Task 008 — ConfigModule：可复用的 MSM 配置管理模块
 
 ## 起始 commit
 ```
-f560c4b (tag: milestone-20260724_wavedataenable_0)
-config: move app_initial_config.json to top-level config/ for shared access
+b48e799 task: detail 008 AppConfig implementation steps for handoff
+```
+
+## 设计目标
+
+ConfigModule 是一个纯 MSM 模块，专司配置的加载/保存/分发/参数访问，不依赖任何硬件或采集模块。
+其他项目只需替换内部的 `AppConfig` 解析逻辑（或通过配置文件定义字段映射），即可复用整套消息接口。
+
+### 消息接口
+
+| 消息 | 效果 |
+|------|------|
+| `LoadFromJson >> path=/config/app_runtime_config.json` | 读 JSON → 更新内存 |
+| `SaveToJson >> path=/config/app_runtime_config.json` | 内存 → 写 JSON |
+| `Distribute >> -@ target` | 向目标模块发 Configure 消息 |
+| `SetParam >> /ch1/trigLength=512` | 改单参数（运行时） |
+| `GetParam >> /ch1/trigLength` | 返回参数值 |
+
+### 模块结构
+
+```
+module_config/
+  CMakeLists.txt
+  mod_config.h/.cpp          ← ConfigModule（MSM 模块派生）
+  config_impl.h/.cpp         ← AppConfig 数据结构（loadFromJson/saveToJson）
+  config_impl.h              ← 可替换，其他项目只需重新实现这个接口
 ```
 
 ## TODO
-- [ ] 创建 `module_config/` 目录及 CMakeLists.txt
+- [ ] 创建 `module_config/` 目录
 
-      cd /home/zkcx/ws/MSM_DAQ && mkdir module_config
-      # CMakeLists.txt: add_library(module_config daq_config.cpp)
-      # target_include_directories(module_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+      mkdir /home/zkcx/ws/MSM_DAQ/module_config
+
+- [ ] 创建 `CMakeLists.txt`
+
+      add_library(module_config mod_config.cpp config_impl.cpp)
+      target_include_directories(module_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+      target_link_libraries(module_config msm_core)
       # 根 CMakeLists.txt 加 add_subdirectory(module_config)
 
-- [ ] 将 `module_daq/daq_config.h/cpp` 移入 `module_config/`，类名 `DaqConfig` → `AppConfig`
+- [ ] 搬移并重构配置数据结构
 
-      mv module_daq/daq_config.h module_config/app_config.h
-      mv module_daq/daq_config.cpp module_config/app_config.cpp
-      # class DaqConfig → class AppConfig
-      # 保留所有字段和 loadFromJson()，新增 saveToJson()、distribute()
+      cp module_daq/daq_config.h module_config/config_impl.h
+      cp module_daq/daq_config.cpp module_config/config_impl.cpp
+      # class DaqConfig → class ConfigImpl（命名暗示可替换）
+      # 保留 loadFromJson()、toKeyValues()、GetFrameLength() 等
+      # 新增 saveToJson()
 
-- [ ] AppConfig 实现：
+- [ ] 实现 ConfigModule（MSM 模块）
 
-  - `saveToJson(path)` — 将当前配置写为 JSON，与 loadFromJson 格式对称
-  - `distribute()` — 遍历内部配置，向 DAQModule/Process/Storage 发 Configure 消息
-    - DAQModule: 调用 toKeyValues() 发 Init 或 Configure（isInit 参数）
-    - Process: BatchSize + FrameSize + StorageTarget
-    - Storage: SavePath + FelName + SystemName + DeviceName + FileType + MaxSaveSizeMB + ExpNo + RunSerial + BatchSize + FrameSize + Slot
-  - 保留 `toKeyValues()` 方法（当前 daq_config.h 已有）
+    - `LoadFromJson` → `configImpl_.loadFromJson(path)`
+    - `SaveToJson` → `configImpl_.saveToJson(path)`
+    - `Distribute` → 遍历配置，向 DAQModule/Process/Storage 发 Configure 消息
+      - DAQModule: 发 Init 或 Configure（带 toKeyValues() 拍平的键值对）
+      - Process: BatchSize + FrameSize + StorageTarget
+      - Storage: SavePath + FelName + SystemName + DeviceName + FileType + MaxSaveSizeMB + ExpNo + RunSerial + BatchSize + FrameSize + Slot
+    - `SetParam /path=value` → 解析路径，更新 configImpl_ 对应字段
+    - `GetParam /path` → 返回对应字段值
 
-- [ ] main_hwdaq / main_simsrc 重构：
+- [ ] main_hwdaq / main_simsrc 重构
 
-  - 全局 `g_config` → `AppConfig` 实例
-  - `start` 流程：`appConfig.loadFromJson(runtimePath)` → `appConfig.distribute(isInit=false)` → 发 Start
-  - 提取 main_simsrc.cpp 和 main_hwdaq.cpp 中共用的分发逻辑到 AppConfig::distribute()
-  - main 只负责：创建模块、register、start、编排命令流程
+    - main 创建 `ConfigModule`，register、start
+    - 不再声明全局 `g_config`，不再 `loadFromJson` / `distributeConfig` 硬编码
+    - 首次启动: 发 `LoadFromJson >> path=...` + `Distribute >> -@ *`（或逐个发）
+    - start 流程: `Distribute >> -@ DAQModule`（带 isInit 标记）→ ...
 
 - [ ] 编译验证
 
       cd /home/zkcx/ws/MSM_DAQ/main_cli/build && cmake ../.. && make -j$(nproc)
       # msm_cli_simsrc + msm_cli_hwdaq 均通过
 
-- [ ] 短期运行测试
+- [ ] 独立调试验证
+
+      # 启动只有 ConfigModule + IPCServer 的最小 main
+      # 通过 msm_ipc_shell 发 LoadFromJson / SetParam / GetParam / SaveToJson
+      # 确认 JSON 正确读写，参数正确修改
+
+- [ ] 运行测试
 
       (echo "start"; sleep 3; echo "stop"; sleep 1; echo "quit") | ./msm_cli_simsrc
       # trig_id 跨通道一致，无 crash
 
-- [ ] EPICS 桥接地基（可选，可后续单独 task）
-
-  - `updateConfigToPV()` 接口声明
-  - PV 到 AppConfig 字段的路径映射表
-
 ## 日志
 
 ### 设计决议
-- AppConfig 内存为 master，JSON 为持久化快照，EPICS PV 为视图
-- 无额外 CLI 命令：`start` = load JSON → AppConfig → 配硬件 → 运行
-- EPICS caput → 直接更新 AppConfig → 自动 `saveToJson()`
-- `module_daq/daq_config.h` 的解析逻辑完全保留，仅移动位置
-- Json 兼容官方软件 `app_initial_config.json` 格式
+- ConfigModule 是纯 MSM 模块，不依赖硬件
+- 内部 `ConfigImpl` 负责 JSON 解析，可替换
+- main 对配置无直接 C++ 访问（通过消息），除非必要才暴露 getter
+- 其他项目：复制 `module_config/`，替换 `config_impl.h/.cpp` 即可复用消息协议
 
-### 上下文交接（2026-07-24，token 将满）
-
-已完成的历史：
-1. WaveDataEnable=0 全面支持（frameSize 自动推导，所有模块统一）
-2. saveRing 256MB，main 统一管理 rings
-3. hwdaq Configure 顺序修复（先注册后分发）
-4. Storage while 循环消费 + idle 10ms + discard 日志
-5. Process idle 50ms→10ms + saveRing 原子写入
-6. 全代码 drain→flush 重命名
-7. config 目录迁移到顶层 `config/`
-8. `module_daq/config/` 清理（已空）
-
-关键文件：
-- `config/app_initial_config.json` — 配置模板
-- `module_daq/daq_config.h/cpp` — 待移入 `module_config/`
-- `module_daq/module_daq.h/cpp` — Init/Configure/Start/Stop 流程，**不要动**
-- `main_cli/main_hwdaq.cpp` — hardware 主流程
-- `main_cli/main_simsrc.cpp` — simulation 主流程
-- `module_storage/module_storage.cpp` — flush/discard 已改好
-- `module_process/module_process.cpp` — idle 10ms, 原子写入 saveRing
+### 已完成
+- WaveDataEnable=0 全面支持
+- saveRing 256MB，main 统一管理 rings
+- hwdaq Configure 顺序修复
+- Storage/Process idle 10ms + saveRing 原子写入
+- drain→flush 重命名 + discard 日志
+- config 目录迁移到顶层
+- module_tui 删除
 
 ## Done
 
