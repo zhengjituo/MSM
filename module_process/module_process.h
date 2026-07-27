@@ -3,6 +3,7 @@
 
 #include "Module.h"
 #include "user_circular_buffer.h"
+#include "frame_parser.h"
 #include <atomic>
 #include <mutex>
 #include <cstdint>
@@ -17,7 +18,11 @@ public:
     struct BatchFrameData {
         std::vector<uint32_t> trig_id;
         std::vector<uint64_t> bunch_id;
-        std::vector<uint32_t> sum;
+        std::vector<double> min_val;
+        std::vector<double> max_val;
+        std::vector<double> sum_l;
+        std::vector<double> sum_h;
+        std::vector<double> vpp;
         std::vector<double> x;
         std::vector<double> y;
         std::vector<double> i;
@@ -40,7 +45,7 @@ public:
     bool isConsuming() const { return consuming_.load(); }
     int64_t getLastTrigId(int ch) const;
     int64_t getLastBunchId(int ch) const;
-    int64_t getLastSum(int ch) const;
+    double  getLastSumH(int ch) const;
     double  getLastX() const;
     double  getLastY() const;
     double  getLastI() const;
@@ -61,7 +66,9 @@ private:
     void registerVars();
 
     void doConsumeOnce();
-    void extractFrame(const uint8_t* frame, size_t flen, int ch, size_t idx);
+    void extractFrame(const uint8_t* frame, size_t flen, int ch);
+
+    int detectBunchIdStep(const uint8_t* batchBuf, size_t flen, size_t nFrames) const;
 
     std::vector<UserCircularBuffer*> rings_;
     UserCircularBuffer* saveRing_ = nullptr;
@@ -82,14 +89,15 @@ private:
 
     std::array<std::atomic<int64_t>, MAX_CH> lastTrigId_{};
     std::array<std::atomic<int64_t>, MAX_CH> lastBunchId_{};
-    std::array<std::atomic<int64_t>, MAX_CH> lastSum_{};
+    std::array<std::atomic<double>, MAX_CH> lastSumH_{};
     std::array<std::atomic<double>, MAX_CH> lastX_{};
     std::array<std::atomic<double>, MAX_CH> lastY_{};
     std::array<std::atomic<double>, MAX_CH> lastI_{};
 
     std::array<BatchFrameData, MAX_CH> batchData_;
     std::vector<uint8_t> batchBuf_;
-    std::atomic<int> frameIndex_{0};
+    std::atomic<int> frameIndex_{-1};  // -1 = auto-align to 100ms boundary
+    int bunchIdStep_ = 10;
 };
 
 #endif

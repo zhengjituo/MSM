@@ -84,6 +84,32 @@ module_config/
       (echo "start"; sleep 3; echo "stop"; sleep 1; echo "quit") | ./msm_cli_simsrc
       # trig_id 跨通道一致，无 crash
 
+## Session Git Log
+
+### 2026-07-24  WaveDataEnable=0 支持 + 框架稳定化
+```
+1c29fa7 cleanup: remove stale module_daq files; fix frameSize dead code
+379511d simsource: support WaveDataEnable for correct frameSize; storage safety
+46b3c7f unify frame_size: Process also gets FrameSize from Configure
+1f39c39 hw: saveRing 256MB; simsrc: slot=0
+35d309e storage: drain all available batches per onIdle cycle
+4b3ad01 main owns all rings; fix hwdaq Configure ordering
+74df652 process: idle delay 50ms->10ms, match storage poll rate
+50218e8 storage: rename Draining->Flushing print; add discard log when save not enabled
+7238d1b process: write all channels to saveRing atomically, fix discard rhythm
+1c34fa1 rename all drain->flush across modules (var names, prints, methods)
+f560c4b config: move app_initial_config.json to top-level config/ for shared access
+eb6503a cleanup: remove unused module_tui
+```
+
+### 2026-07-27  ConfigModule 提取
+```
+b48e799 task: detail 008 AppConfig implementation steps for handoff
+7a2a1f9 task: update 008 to ConfigModule as reusable MSM module
+56bd066 module_config: extract daq_config to reusable ConfigModule
+58dfcd9 task: update 008 with completion status
+```
+
 ## 日志
 
 ### 设计决议

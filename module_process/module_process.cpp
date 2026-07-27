@@ -4,30 +4,13 @@
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 
-static inline uint32_t readU32BE(const uint8_t* p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-           ((uint32_t)p[2] << 8)  | (uint32_t)p[3];
-}
-
-static inline uint64_t readU48BE(const uint8_t* p) {
-    return ((uint64_t)p[0] << 40) | ((uint64_t)p[1] << 32) |
-           ((uint64_t)p[2] << 24) | ((uint64_t)p[3] << 16) |
-           ((uint64_t)p[4] << 8)  | (uint64_t)p[5];
-}
-
-static inline uint64_t readU64BE(const uint8_t* p) {
-    return ((uint64_t)p[0] << 56) | ((uint64_t)p[1] << 48) |
-           ((uint64_t)p[2] << 40) | ((uint64_t)p[3] << 32) |
-           ((uint64_t)p[4] << 24) | ((uint64_t)p[5] << 16) |
-           ((uint64_t)p[6] << 8)  | (uint64_t)p[7];
-}
-
-static inline double readDoubleBE(const uint8_t* p) {
-    uint64_t val = readU64BE(p);
-    double result;
-    memcpy(&result, &val, sizeof(result));
-    return result;
+static std::string fmtDouble(double v, int prec = 6) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(prec) << v;
+    return oss.str();
 }
 
 ModuleProcess::ModuleProcess(const std::string& name,
@@ -53,13 +36,17 @@ ModuleProcess::ModuleProcess(const std::string& name,
             std::cerr << "[" << name_ << "] WARN: null ring[" << i << "]\n";
         lastTrigId_[i].store(0);
         lastBunchId_[i].store(0);
-        lastSum_[i].store(0);
+        lastSumH_[i].store(0.0);
         lastX_[i].store(0.0);
         lastY_[i].store(0.0);
         lastI_[i].store(0.0);
         batchData_[i].trig_id.reserve(batchSize_);
         batchData_[i].bunch_id.reserve(batchSize_);
-        batchData_[i].sum.reserve(batchSize_);
+        batchData_[i].min_val.reserve(batchSize_);
+        batchData_[i].max_val.reserve(batchSize_);
+        batchData_[i].sum_l.reserve(batchSize_);
+        batchData_[i].sum_h.reserve(batchSize_);
+        batchData_[i].vpp.reserve(batchSize_);
         batchData_[i].x.reserve(batchSize_);
         batchData_[i].y.reserve(batchSize_);
         batchData_[i].i.reserve(batchSize_);
@@ -97,9 +84,9 @@ int64_t ModuleProcess::getLastBunchId(int ch) const {
     return lastBunchId_[ch].load();
 }
 
-int64_t ModuleProcess::getLastSum(int ch) const {
-    if (ch < 0 || ch >= nCh_) return 0;
-    return lastSum_[ch].load();
+double ModuleProcess::getLastSumH(int ch) const {
+    if (ch < 0 || ch >= nCh_) return 0.0;
+    return lastSumH_[ch].load();
 }
 
 double ModuleProcess::getLastX() const {
@@ -126,7 +113,10 @@ void ModuleProcess::setStorageTarget(const std::string& target) {
 
 void ModuleProcess::setFrameIndex(int idx) {
     frameIndex_ = idx;
-    std::cout << "[" << name_ << "] FrameIndex set to " << idx << "\n";
+    if (idx < 0)
+        std::cout << "[" << name_ << "] FrameIndex set to auto\n";
+    else
+        std::cout << "[" << name_ << "] FrameIndex set to " << idx << "\n";
 }
 
 void ModuleProcess::onIdle() {
@@ -153,7 +143,7 @@ void ModuleProcess::handleState(const msm::Message& msg) {
         onStatus(response);
         msm::MessageBus::instance().send(response);
     } else if (msg.cmd == "SetFrameIndex") {
-        int idx = 0;
+        int idx = -1;
         if (msg.data.contains("index"))
             idx = static_cast<int>(msg.data.getInt("index"));
         setFrameIndex(idx);
@@ -167,9 +157,12 @@ void ModuleProcess::onConfigure(const msm::Json& data) {
         frameSize_ = static_cast<size_t>(data.getInt("FrameSize"));
     if (data.contains("StorageTarget"))
         storageTarget_ = data.get("StorageTarget");
+    if (data.contains("BunchIdStep"))
+        bunchIdStep_ = static_cast<int>(data.getInt("BunchIdStep"));
     std::cout << "[" << name_ << "] Configured: BatchSize=" << batchSize_
               << " FrameSize=" << frameSize_
-              << " StorageTarget=" << storageTarget_ << "\n";
+              << " StorageTarget=" << storageTarget_
+              << " BunchIdStep=" << bunchIdStep_ << "\n";
 }
 
 void ModuleProcess::onStart() {
@@ -181,11 +174,12 @@ void ModuleProcess::onStart() {
         lastWritePos_[i].store(rings_[i] ? rings_[i]->getWriteTotal() : 0);
         lastTrigId_[i].store(0);
         lastBunchId_[i].store(0);
-        lastSum_[i].store(0);
+        lastSumH_[i].store(0.0);
         lastX_[i].store(0.0);
         lastY_[i].store(0.0);
         lastI_[i].store(0.0);
     }
+    bunchIdStep_ = 10;
     consuming_ = true;
     for (int i = 0; i < nCh_; i++) lastPeekedReadPos_[i] = -1;
     std::cout << "[" << name_ << "] Full processing (message-driven, " << nCh_
@@ -225,12 +219,35 @@ void ModuleProcess::onStatus(msm::Message& response) {
                           std::to_string(lastTrigId_[i].load()));
         response.data.set("ch" + std::to_string(i + 1) + "_bunch_id",
                           std::to_string(lastBunchId_[i].load()));
-        response.data.set("ch" + std::to_string(i + 1) + "_sum",
-                          std::to_string(lastSum_[i].load()));
+        response.data.set("ch" + std::to_string(i + 1) + "_sum_h",
+                          fmtDouble(lastSumH_[i].load()));
     }
-    response.data.set("x_pos", std::to_string(lastX_[0].load()));
-    response.data.set("y_pos", std::to_string(lastY_[0].load()));
-    response.data.set("intensity", std::to_string(lastI_[0].load()));
+    response.data.set("x_pos", fmtDouble(lastX_[0].load()));
+    response.data.set("y_pos", fmtDouble(lastY_[0].load()));
+    response.data.set("intensity", fmtDouble(lastI_[0].load()));
+    response.data.set("frame_index", std::to_string(frameIndex_.load()));
+
+    // Feature table data from last batch
+    {
+        std::lock_guard<std::mutex> lock(batchMutex_);
+        if (batchData_[0].count > 0) {
+            response.data.set("batch_no", std::to_string(batchData_[0].batchNo));
+            for (int i = 0; i < nCh_; i++) {
+                if (batchData_[i].count == 0) continue;
+                std::string p = "ch" + std::to_string(i + 1) + "_feat_";
+                response.data.set(p + "trig_id", std::to_string(batchData_[i].trig_id[0]));
+                response.data.set(p + "bunch_id", std::to_string(batchData_[i].bunch_id[0]));
+                response.data.set(p + "min", fmtDouble(batchData_[i].min_val[0]));
+                response.data.set(p + "max", fmtDouble(batchData_[i].max_val[0]));
+                response.data.set(p + "sum_l", fmtDouble(batchData_[i].sum_l[0]));
+                response.data.set(p + "sum_h", fmtDouble(batchData_[i].sum_h[0]));
+                response.data.set(p + "vpp", fmtDouble(batchData_[i].vpp[0]));
+                response.data.set(p + "x", fmtDouble(batchData_[i].x[0]));
+                response.data.set(p + "y", fmtDouble(batchData_[i].y[0]));
+                response.data.set(p + "i", fmtDouble(batchData_[i].i[0]));
+            }
+        }
+    }
 }
 
 void ModuleProcess::registerVars() {
@@ -240,7 +257,7 @@ void ModuleProcess::registerVars() {
         declareVar("ch" + idx + "_batches", processedBatches_[i]);
         declareVar("ch" + idx + "_trig_id", lastTrigId_[i]);
         declareVar("ch" + idx + "_bunch_id", lastBunchId_[i]);
-        declareVar("ch" + idx + "_sum", lastSum_[i]);
+        declareVar("ch" + idx + "_sum_h", lastSumH_[i]);
         if (i == 0) {
             declareVar("x_pos", lastX_[i]);
             declareVar("y_pos", lastY_[i]);
@@ -249,35 +266,56 @@ void ModuleProcess::registerVars() {
     }
 }
 
-void ModuleProcess::extractFrame(const uint8_t* frame, size_t flen, int ch, size_t idx) {
-    if (frame[0] != 0xEB || frame[1] != 0x91) return;
-    if (flen < 72) return;
+void ModuleProcess::extractFrame(const uint8_t* frame, size_t flen, int ch) {
+    FrameHeader hdr;
+    if (!parseHeader(frame, flen, hdr)) return;
 
-    uint32_t tid = readU32BE(frame + 17);
-    const uint8_t* trailer = frame + flen - 64;
-    uint64_t bid = readU48BE(trailer + 2);
-    uint32_t sum = readU32BE(trailer + 8);
+    const uint8_t* trailerData = frame + flen - TRAILER_SIZE;
+    FrameTrailer tlr;
+    if (!parseTrailer(trailerData, TRAILER_SIZE, tlr)) return;
 
-    batchData_[ch].trig_id[idx] = tid;
-    batchData_[ch].bunch_id[idx] = bid;
-    batchData_[ch].sum[idx] = sum;
+    CalibratedFrame cal = calibrate(hdr, tlr);
 
-    // X/Y/I only from channel 1
+    batchData_[ch].trig_id[0] = hdr.trig_id;
+    batchData_[ch].bunch_id[0] = (uint64_t)cal.bunch_id;
+    batchData_[ch].min_val[0] = cal.min_val;
+    batchData_[ch].max_val[0] = cal.max_val;
+    batchData_[ch].sum_l[0] = cal.sum_l;
+    batchData_[ch].sum_h[0] = cal.sum_h;
+    batchData_[ch].vpp[0] = cal.vpp;
+    batchData_[ch].x[0] = cal.x;
+    batchData_[ch].y[0] = cal.y;
+    batchData_[ch].i[0] = cal.i;
+
+    lastTrigId_[ch].store((int64_t)hdr.trig_id);
+    lastBunchId_[ch].store((int64_t)cal.bunch_id);
+    lastSumH_[ch].store(cal.sum_h);
     if (ch == 0) {
-        batchData_[ch].x[idx] = readDoubleBE(trailer + 24);
-        batchData_[ch].y[idx] = readDoubleBE(trailer + 32);
-        batchData_[ch].i[idx] = readDoubleBE(trailer + 40);
+        lastX_[0].store(cal.x);
+        lastY_[0].store(cal.y);
+        lastI_[0].store(cal.i);
     }
+}
 
-    // Update latest values
-    lastTrigId_[ch].store((int64_t)tid);
-    lastBunchId_[ch].store((int64_t)bid);
-    lastSum_[ch].store((int64_t)sum);
-    if (ch == 0) {
-        lastX_[0].store(batchData_[0].x[idx]);
-        lastY_[0].store(batchData_[0].y[idx]);
-        lastI_[0].store(batchData_[0].i[idx]);
+int ModuleProcess::detectBunchIdStep(const uint8_t* batchBuf, size_t flen, size_t nFrames) const {
+    if (nFrames < 2) return 1;
+    uint64_t b0 = 0, b1 = 0;
+    for (size_t i = 0; i < nFrames; i++) {
+        const uint8_t* f = batchBuf + i * flen;
+        if (f[0] != 0xEB || f[1] != 0x91) continue;
+        const uint8_t* tr = f + flen - TRAILER_SIZE;
+        uint64_t bid = readU48BE(tr + 2);
+        if (b0 == 0) {
+            b0 = bid;
+        } else if (bid != b0) {
+            b1 = bid;
+            break;
+        }
     }
+    if (b0 == 0 || b1 == 0) return 1;
+    int64_t diff = (int64_t)(b1 - b0);
+    if (diff < 0) diff = -diff;
+    return (diff > 0 && diff <= 1000) ? (int)diff : 10;
 }
 
 void ModuleProcess::doConsumeOnce() {
@@ -369,36 +407,86 @@ void ModuleProcess::doConsumeOnce() {
 
     if (totalBytes == 0) return;
 
+    // Detect bunchId step from ch0
+    size_t flen0 = rings_[0] ? rings_[0]->getExpectedPacketSize() : 0;
+    if (flen0 > 0) {
+        int detected = detectBunchIdStep(batchBuf_.data() + offsets[0], flen0, batchSize_);
+        if (detected > 0) bunchIdStep_ = detected;
+    }
+
+    // Determine frame index: auto-align if frameIndex_ < 0
+    int selIdx = frameIndex_.load();
+    if (selIdx < 0) {
+        uint64_t firstBid = 0;
+        if (flen0 > 0) {
+            const uint8_t* ff = batchBuf_.data() + offsets[0];
+            if (ff[0] == 0xEB && ff[1] == 0x91 && flen0 >= TRAILER_SIZE) {
+                firstBid = readU48BE(ff + flen0 - TRAILER_SIZE + 2);
+            }
+        }
+        if (firstBid > 0 && bunchIdStep_ > 0) {
+            int offset = (int)((100000ULL - (firstBid % 100000ULL)) / (uint64_t)bunchIdStep_);
+            if (offset >= 0 && offset < (int)batchSize_)
+                selIdx = offset;
+            else
+                selIdx = 0;
+        } else {
+            selIdx = 0;
+        }
+    }
+    if (selIdx < 0) selIdx = 0;
+    if ((size_t)selIdx >= batchSize_) selIdx = 0;
+
+    // Extract selected frame from each channel
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
+        const uint8_t* frame = batchBuf_.data() + offsets[i] + (size_t)selIdx * flen;
+        extractFrame(frame, flen, i);
+        batchData_[i].count = 1;
+        batchData_[i].batchNo = curBatch;
+    }
 
-        // 提取用户所选 index 的帧
-        int selIdx = frameIndex_.load();
-        if (selIdx >= 0 && (size_t)selIdx < batchSize_) {
-            const uint8_t* frame = batchBuf_.data() + offsets[i] + (size_t)selIdx * flen;
-            extractFrame(frame, flen, i, 0);
-            batchData_[i].count = 1;
-            batchData_[i].batchNo = curBatch;
+    // Print per-channel log line (first frame bunch_id)
+    for (int i = 0; i < nCh_; i++) {
+        size_t flen = rings_[i]->getExpectedPacketSize();
+        uint64_t fb = 0;
+        const uint8_t* ff = batchBuf_.data() + offsets[i];
+        if (ff[0] == 0xEB && ff[1] == 0x91 && flen >= TRAILER_SIZE) {
+            fb = readU48BE(ff + flen - TRAILER_SIZE + 2);
         }
-
-        size_t cnt = 0;
-        uint32_t firstTrigId = 0;
-        uint64_t firstBunchId = 0;
-        const uint8_t* firstFrame = batchBuf_.data() + offsets[i];
-        if (firstFrame[0] == 0xEB && firstFrame[1] == 0x91 && flen >= 72) {
-            firstTrigId = readU32BE(firstFrame + 17);
-            const uint8_t* trailer = firstFrame + flen - 64;
-            firstBunchId = readU48BE(trailer + 2);
-            cnt = batchSize_;
-        }
-
         int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
         std::cout << "[" << name_ << "] ch" << chPhys
                   << " batch=" << curBatch
-                  << " trig_id=" << firstTrigId
-                  << " bunch_id=" << firstBunchId
-                  << " cnt=" << cnt
+                  << " first_bunch_id=" << fb
+                  << " idx=" << selIdx
+                  << " target_bunch_id=" << (uint64_t)batchData_[i].bunch_id[0]
                   << "\n";
+    }
+
+    // Print 4-channel feature table
+    {
+        std::cout << "[" << name_ << "] batch=" << curBatch
+                  << " frame_idx=" << selIdx << " step=" << bunchIdStep_ << "\n";
+        auto printRow = [&](const char* label, std::vector<double> BatchFrameData::*field) {
+            std::cout << "  " << label;
+            for (int i = 0; i < nCh_; i++)
+                std::cout << "  " << std::fixed << std::setprecision(6) << (batchData_[i].*field)[0];
+            std::cout << "\n";
+        };
+        std::cout << "  trig_id";
+        for (int i = 0; i < nCh_; i++) std::cout << "  " << batchData_[i].trig_id[0];
+        std::cout << "\n";
+        std::cout << "  bunch_id";
+        for (int i = 0; i < nCh_; i++) std::cout << "  " << batchData_[i].bunch_id[0];
+        std::cout << "\n";
+        printRow("min",      &BatchFrameData::min_val);
+        printRow("max",      &BatchFrameData::max_val);
+        printRow("sum_l",    &BatchFrameData::sum_l);
+        printRow("sum_h",    &BatchFrameData::sum_h);
+        printRow("vpp",      &BatchFrameData::vpp);
+        printRow("x",        &BatchFrameData::x);
+        printRow("y",        &BatchFrameData::y);
+        printRow("i",        &BatchFrameData::i);
     }
 
     for (int i = 0; i < nCh_; i++) {

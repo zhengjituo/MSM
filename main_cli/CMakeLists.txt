@@ -31,3 +31,8 @@ target_link_libraries(msm_cli_hwdaq
 add_executable(msm_ipc_shell msm_ipc_shell.cpp)
 set_target_properties(msm_ipc_shell PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_link_libraries(msm_ipc_shell pthread)
+
+add_executable(test_parse ${CMAKE_SOURCE_DIR}/module_process/test_parse.cpp
+                          ${CMAKE_SOURCE_DIR}/module_process/frame_parser.cpp)
+set_target_properties(test_parse PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
+target_include_directories(test_parse PRIVATE ${CMAKE_SOURCE_DIR}/module_process)

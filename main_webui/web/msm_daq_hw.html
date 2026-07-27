@@ -10,21 +10,30 @@ h1 { color: #00d4ff; font-size: 22px; margin-bottom: 16px; display: flex; align-
 .indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
 .indicator.on { background: #4ae0a0; box-shadow: 0 0 6px #4ae0a0; }
 .indicator.off { background: #555; }
+.indicator.warn { background: #f0a030; box-shadow: 0 0 6px #f0a030; }
 .btn { padding: 6px 16px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
-.btn-start { background: #00d4ff; color: #111; }
-.btn-stop { background: #e04a4a; color: #fff; }
-.btn-reload { background: #f0a030; color: #111; }
-.btn-quit { background: #333; color: #ccc; }
+.btn-primary { background: #00d4ff; color: #111; }
+.btn-danger { background: #e04a4a; color: #fff; }
+.btn-warn { background: #f0a030; color: #111; }
+.btn-default { background: #333; color: #ccc; }
 .btn:disabled { opacity: 0.4; cursor: default; }
+.btn-sm { padding: 4px 12px; font-size: 12px; }
 .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .toolbar label { color: #a0a0b0; font-size: 13px; }
 .toolbar input[type=checkbox] { width: 16px; height: 16px; }
+input.idx-input { width: 70px; padding: 4px 6px; border-radius: 4px; border: 1px solid #0f3460; background: #16213e; color: #e0e0e0; font-size: 13px; text-align: center; }
+.mode-select { display: flex; gap: 6px; align-items: center; }
+.mode-select label { color: #e0e0e0; padding: 3px 10px; border-radius: 4px; border: 1px solid #0f3460; cursor: pointer; font-size: 13px; }
+.mode-select input[type=radio] { display: none; }
+.mode-select input[type=radio]:checked + label { background: #00d4ff; color: #111; border-color: #00d4ff; font-weight: 600; }
+.backend-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #a0a0b0; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
 th, td { padding: 5px 10px; text-align: right; border-bottom: 1px solid #0f3460; font-variant-numeric: tabular-nums; }
 th { color: #a0a0b0; font-weight: 500; text-align: center; background: #16213e; }
 td { color: #4ae0a0; }
 td:first-child, th:first-child { text-align: left; color: #e0e0e0; }
 h2 { color: #00d4ff; font-size: 15px; margin: 14px 0 6px; }
+hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
 #statusBar { margin-top: 12px; font-size: 12px; color: #606080; display: flex; gap: 16px; align-items: center; }
 #toast { position: fixed; bottom: 20px; right: 20px; background: #0a0a1a; border: 1px solid #00d4ff; border-radius: 6px; padding: 8px 14px; font-size: 12px; color: #00d4ff; opacity: 0; transition: opacity .3s; pointer-events: none; }
 #toast.show { opacity: 1; }
@@ -34,23 +43,52 @@ h2 { color: #00d4ff; font-size: 15px; margin: 14px 0 6px; }
 
 <h1>
   MSM DAQ
-  <span id="indDaq" class="indicator off"></span>
-  <span id="indSave" class="indicator off"></span>
+  <span id="indDaq" class="indicator off"></span><span style="font-size:12px;color:#a0a0b0;margin-right:8px" id="lblDaq">DAQ</span>
+  <span id="indSave" class="indicator off"></span><span style="font-size:12px;color:#a0a0b0;margin-right:8px" id="lblSave">Save</span>
   <span style="font-size:12px;color:#606080" id="fpsDisplay">0 fps</span>
 </h1>
 
+<!-- Backend control -->
+<div class="toolbar" id="backendToolbar">
+  <span class="mode-select">
+    <input type="radio" name="backendMode" id="modeHw" value="hw" checked>
+    <label for="modeHw">HW</label>
+    <input type="radio" name="backendMode" id="modeSim" value="sim">
+    <label for="modeSim">SIM</label>
+  </span>
+  <button class="btn btn-primary btn-sm" id="btnRun" onclick="doRun()">▶ Run</button>
+  <button class="btn btn-danger btn-sm" id="btnQuitBackend" onclick="doQuitBackend()" disabled>■ Quit</button>
+  <span class="backend-indicator">
+    <span id="indBackend" class="indicator off"></span>
+    <span id="backendStatusText">stopped</span>
+  </span>
+</div>
+
+<!-- DAQ control -->
 <div class="toolbar">
-  <label><input type="checkbox" id="saveCheck" onchange="toggleSave()"> Save</label>
-  <button class="btn btn-start" id="btnStart" onclick="doStart()">▶ Start</button>
-  <button class="btn btn-stop" id="btnStop" onclick="doStop()">■ Stop</button>
-    <button class="btn btn-reload" onclick="doReload()">↻ Reload</button>
-  <button class="btn btn-quit" onclick="doQuit()">✕ Quit</button>
+  <label><input type="checkbox" id="saveCheck" onchange="toggleSave()" disabled> Save</label>
+  <button class="btn btn-start" id="btnStart" onclick="doStart()" disabled>▶ Start</button>
+  <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>■ Stop</button>
+  <button class="btn btn-reload" id="btnReload" onclick="doReload()" disabled>↻ Reload</button>
 </div>
 
 <h2>Frame Summary</h2>
 <table>
   <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th>Storage</th></tr></thead>
   <tbody id="chTable"></tbody>
+</table>
+
+<h2>Feature Table
+  <span style="font-size:12px;color:#606080" id="featMeta"></span>
+</h2>
+<div class="toolbar">
+  <label>Index:</label>
+  <input class="idx-input" id="idxInput" type="number" min="-1" max="9999" value="-1" title="-1 = auto align">
+  <button class="btn btn-reload" onclick="setFrameIndex()" style="padding:4px 10px;font-size:12px">Set</button>
+</div>
+<table>
+  <thead><tr id="featHeader"></tr></thead>
+  <tbody id="featBody"></tbody>
 </table>
 
 <div id="statusBar">
@@ -67,10 +105,35 @@ let evtSource = null;
 let prevFrames = [];
 let prevTime = Date.now();
 
+const FEATURE_LABELS = [
+  ["trig_id", "TrigID"],
+  ["bunch_id", "BunchID"],
+  ["min", "Min"],
+  ["max", "Max"],
+  ["sum_l", "Sum_L"],
+  ["sum_h", "Sum_H"],
+  ["vpp", "Vpp"],
+  ["x", "X"],
+  ["y", "Y"],
+  ["i", "I"]
+];
+
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'show';
   setTimeout(() => t.className = '', 2000);
+}
+
+async function post(url, body) {
+  try {
+    const r = await fetch(url, { method:'POST', body });
+    const j = await r.json();
+    toast(j.status);
+    return j;
+  } catch(e) {
+    toast('FAILED');
+    return { status: 'FAILED' };
+  }
 }
 
 function connectSSE() {
@@ -90,22 +153,49 @@ function connectSSE() {
 
 function render(d) {
   const now = Date.now();
-  const anyData = d.channels && d.channels.some(c => c.daq_frames > 0);
   document.getElementById('indDaq').className = 'indicator ' + (d.running ? 'on' : 'off');
+  document.getElementById('lblDaq').textContent = d.running ? 'Run' : 'Stop';
   document.getElementById('indSave').className = 'indicator ' + (d.save_enabled ? 'on' : 'off');
+  document.getElementById('lblSave').textContent = d.save_enabled ? 'On' : 'Off';
+
+  const backendAlive = d.backend_alive;
+  const backendSt = d.backend_status || 'stopped';
+  const backendRunning = backendAlive && backendSt === 'running';
+
+  // Backend indicator
+  const indB = document.getElementById('indBackend');
+  if (backendSt === 'running') {
+    indB.className = 'indicator on';
+  } else if (backendSt === 'launching') {
+    indB.className = 'indicator warn';
+  } else if (backendSt === 'crashed') {
+    indB.className = 'indicator off';
+    indB.style.background = '#e04a4a';
+    indB.style.boxShadow = '0 0 6px #e04a4a';
+  } else {
+    indB.className = 'indicator off';
+    indB.style.background = '';
+    indB.style.boxShadow = '';
+  }
+  document.getElementById('backendStatusText').textContent = backendSt;
+
+  // Backend buttons
+  document.getElementById('btnRun').disabled = backendRunning || backendSt === 'launching';
+  document.getElementById('btnQuitBackend').disabled = !backendAlive && backendSt !== 'crashed';
+
+  // DAQ controls enabled only when backend is running
+  document.getElementById('saveCheck').disabled = !backendRunning;
+  document.getElementById('btnStart').disabled = !backendRunning || d.running;
+  document.getElementById('btnStop').disabled = !backendRunning || !d.running;
+  document.getElementById('btnReload').disabled = !backendRunning;
 
   document.getElementById('saveCheck').checked = d.save_enabled;
-  document.getElementById('saveCheck').disabled = d.running;
 
-  document.getElementById('btnStart').disabled = d.running;
-  document.getElementById('btnStop').disabled = !d.running;
-
+  // Channel summary
   const tbody = document.getElementById('chTable');
   let html = '';
-  let totalDaq = 0;
   for (let i = 0; i < (d.channels || []).length; i++) {
     const ch = d.channels[i];
-    totalDaq += ch.daq_frames || 0;
     html += '<tr><td>CH' + (i+1) + '</td>'
          + '<td>' + (ch.daq_frames || 0).toLocaleString() + '</td>'
          + '<td>' + (ch.proc_frames || 0).toLocaleString() + '</td>'
@@ -114,7 +204,7 @@ function render(d) {
   }
   tbody.innerHTML = html;
 
-  // FPS (based on DAQ frames)
+  // FPS
   const dt = (now - prevTime) / 1000;
   if (dt > 0 && prevFrames.length > 0 && d.channels) {
     const curFrames = d.channels.map(c => c.daq_frames || 0);
@@ -128,35 +218,73 @@ function render(d) {
   }
   prevTime = now;
 
+  // Feature table
+  document.getElementById('featMeta').textContent =
+    d.has_feature ? 'batch #' + d.batch_no + '  idx=' + d.frame_index : '';
+
+  const feat = d.features || [];
+  const nCh = feat.length;
+  const header = document.getElementById('featHeader');
+  let hhtml = '<th>Feature</th>';
+  for (let i = 0; i < nCh; i++) hhtml += '<th>CH' + (i+1) + '</th>';
+  header.innerHTML = hhtml;
+
+  const body = document.getElementById('featBody');
+  let bhtml = '';
+  if (d.has_feature && nCh > 0) {
+    for (const [key, label] of FEATURE_LABELS) {
+      bhtml += '<tr><td>' + label + '</td>';
+      for (let i = 0; i < nCh; i++) {
+        let v = feat[i][key];
+        if (key === 'bunch_id') {
+          bhtml += '<td>' + v.toLocaleString() + '</td>';
+        } else if (key === 'trig_id') {
+          bhtml += '<td>' + v + '</td>';
+        } else {
+          let num = parseFloat(v);
+          bhtml += '<td>' + (isNaN(num) ? v : num.toFixed(6)) + '</td>';
+        }
+      }
+      bhtml += '</tr>';
+    }
+  } else {
+    bhtml += '<tr><td colspan="' + Math.max(2, nCh + 1) + '" style="text-align:center;color:#606080">waiting for batch data...</td></tr>';
+  }
+  body.innerHTML = bhtml;
+
   document.getElementById('statusText').textContent = d.running ? 'running' : 'stopped';
   document.getElementById('statusText').style.color = d.running ? '#4ae0a0' : '#e04a4a';
   document.getElementById('chCount').textContent = (d.channels || []).length + 'ch';
   document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
 }
 
-async function post(body) {
-  try {
-    const r = await fetch('/api/msg', { method:'POST', body });
-    const j = await r.json();
-    toast(j.status);
-  } catch(e) {
-    toast('FAILED');
-  }
+function doRun() {
+  const mode = document.querySelector('input[name=backendMode]:checked').value;
+  post('/api/run', mode);
 }
 
-function doStart() { post('start'); }
-function doStop() { post('stop'); }
-function doReload() { post('reload'); }
-function doQuit() { if (confirm('Quit DAQ system?')) post('quit'); }
+function doQuitBackend() {
+  if (confirm('Quit backend process?'))
+    post('/api/stop', '');
+}
+
+function doStart() { post('/api/msg', 'start'); }
+function doStop() { post('/api/msg', 'stop'); }
+function doReload() { post('/api/msg', 'reload'); }
 
 function toggleSave() {
   const cb = document.getElementById('saveCheck');
-  post(cb.checked ? 'enablesave' : 'disablesave');
+  post('/api/msg', cb.checked ? 'enablesave' : 'disablesave');
+}
+
+function setFrameIndex() {
+  const v = document.getElementById('idxInput').value;
+  post('/api/msg', 'SetFrameIndex >> index=' + v + ' -@ Process');
 }
 
 // Initial load
 fetch('/api/status').then(r=>r.json()).then(d => {
-  render({...d, channels: d.channels || []});
+  render({...d, channels: d.channels || [], features: d.features || []});
 }).catch(() => {});
 
 connectSSE();
