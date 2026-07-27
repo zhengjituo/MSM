@@ -15,6 +15,7 @@ add_subdirectory(module_core)
 
 # ── Shared libraries ──
 add_subdirectory(extern/circular_buffer)
+add_subdirectory(module_config)   # must be before module_daq
 add_subdirectory(module_daq)
 add_subdirectory(module_process)
 add_subdirectory(module_storage)

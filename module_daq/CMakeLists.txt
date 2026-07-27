@@ -1,8 +1,7 @@
 add_library(module_daq STATIC
     module_daq.cpp
-    daq_config.cpp
 )
-target_link_libraries(module_daq PUBLIC msm_core user_circular_buffer)
+target_link_libraries(module_daq PUBLIC msm_core user_circular_buffer module_config)
 target_include_directories(module_daq
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sdk_include

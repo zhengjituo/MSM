@@ -4,6 +4,7 @@ add_executable(msm_cli_simsrc main_simsrc.cpp)
 set_target_properties(msm_cli_simsrc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_compile_definitions(msm_cli_simsrc PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(msm_cli_simsrc
+    module_config
     module_simsource
     module_process
     module_storage
@@ -18,6 +19,7 @@ target_compile_definitions(msm_cli_hwdaq PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURC
 target_include_directories(msm_cli_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/sdk_include)
 target_link_directories(msm_cli_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/sdk_include)
 target_link_libraries(msm_cli_hwdaq
+    module_config
     module_daq
     module_process
     module_storage

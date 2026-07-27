@@ -1,10 +1,10 @@
 #include "MessageBus.h"
 #include "NIStringParser.h"
 #include "IPCServer.h"
+#include "mod_config.h"
 #include "module_daq.h"
 #include "module_process.h"
 #include "module_storage.h"
-#include "daq_config.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -44,30 +44,8 @@ public:
     msm::ModuleVars* getVars() override { return &tableVars_; }
 };
 
-static DaqConfig g_config;
-
-static void distributeConfig(bool isInit = true) {
-    msm::Message daqMsg(isInit ? "Init" : "Configure");
-    daqMsg.data.data = g_config.toKeyValues();
-    daqMsg.setTarget("DAQModule");
-    daqMsg.setSender("Main");
-    msm::MessageBus::instance().send(daqMsg);
-
-    send("Configure >> BatchSize=10000, FrameSize=" + std::to_string(g_config.frame_size) + ", StorageTarget=Storage -@ Process");
-
-    send("Configure >> SavePath=" + g_config.data_save_path
-         + ", FelName=" + g_config.fel_name
-         + ", SystemName=" + g_config.system_name
-         + ", DeviceName=" + g_config.device_name
-         + ", FileType=" + g_config.file_type
-         + ", MaxSaveSizeMB=" + std::to_string(g_config.max_save_size_mb)
-         + ", ExpNo=" + std::to_string(g_config.exp_no)
-         + ", RunSerial=" + g_config.run_serial
-         + ", BatchSize=10000"
-         + ", FrameSize=" + std::to_string(g_config.frame_size)
-         + ", Slot=" + std::to_string(g_config.slot)
-         + " -@ Storage");
-}
+static std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
+static std::string g_runtimeConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_runtime_config.json";
 
 static void printStatus(const ModuleDAQ& daq,
                         const ModuleProcess& process,
@@ -97,21 +75,29 @@ int main() {
 
     auto& bus = msm::MessageBus::instance();
 
-    {
-        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
-        if (!g_config.loadFromJson(cfgPath)) {
-            std::cerr << "[main] Failed to load " << cfgPath << "\n";
-            return 1;
-        }
+    // ConfigModule — single source of all configuration
+    ConfigModule configModule;
+    bus.registerModule(&configModule);
+    configModule.start();
+
+    // Load initial config (synchronous direct call for setup needs)
+    if (!configModule.config().loadFromJson(g_initConfigPath)) {
+        std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
+        return 1;
     }
+    // Save initial as runtime config
+    configModule.config().saveToJson(g_runtimeConfigPath);
+    std::cout << "[main] Config loaded\n";
+
+    const auto& cfg = configModule.config();
 
     int nCh = 0;
-    for (const auto& card : g_config.cards)
+    for (const auto& card : cfg.cards)
         for (const auto& ch : card.channels)
             if (ch.runEnable) nCh++;
     if (nCh == 0) nCh = 4;
 
-    size_t frameSize = g_config.frame_size;
+    size_t frameSize = cfg.frame_size;
     if (frameSize == 0) frameSize = 1152;
     std::vector<UserCircularBuffer*> daqRings;
     for (int i = 0; i < nCh; i++)
@@ -131,12 +117,13 @@ int main() {
     bus.registerModule(&ipc);
     ipc.start();
 
+    // First-time Init: send to DAQModule (triggers onReadConfig + initHW + updateConfig)
     {
-        msm::Message daqMsg("Init");
-        daqMsg.data.data = g_config.toKeyValues();
-        daqMsg.setTarget("DAQModule");
-        daqMsg.setSender("Main");
-        msm::MessageBus::instance().send(daqMsg);
+        msm::Message daqInit("Init");
+        daqInit.data.data = cfg.toKeyValues();
+        daqInit.setTarget("DAQModule");
+        daqInit.setSender("Main");
+        msm::MessageBus::instance().send(daqInit);
     }
     while (!daq.isConfigured())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -157,20 +144,14 @@ int main() {
     storage.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Configure Process/Storage (must be after register)
-    send("Configure >> BatchSize=10000, FrameSize=" + std::to_string(g_config.frame_size) + ", StorageTarget=Storage -@ Process");
-    send("Configure >> SavePath=" + g_config.data_save_path
-         + ", FelName=" + g_config.fel_name
-         + ", SystemName=" + g_config.system_name
-         + ", DeviceName=" + g_config.device_name
-         + ", FileType=" + g_config.file_type
-         + ", MaxSaveSizeMB=" + std::to_string(g_config.max_save_size_mb)
-         + ", ExpNo=" + std::to_string(g_config.exp_no)
-         + ", RunSerial=" + g_config.run_serial
-         + ", BatchSize=10000"
-         + ", FrameSize=" + std::to_string(g_config.frame_size)
-         + ", Slot=" + std::to_string(g_config.slot)
-         + " -@ Storage");
+    // Configure Process/Storage via ConfigModule distribute
+    {
+        msm::Message dist("Distribute");
+        dist.setTarget("ConfigModule");
+        dist.setSender("Main");
+        dist.data.set("isInit", false);
+        msm::MessageBus::instance().send(dist);
+    }
 
     while (!daq.isHwReady())
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -188,11 +169,11 @@ int main() {
             pfd.events = POLLIN;
             int rc = poll(&pfd, 1, 200);
             if (rc < 0) { if (errno == EINTR) continue; break; }
-            if (rc == 0) continue;  // timeout, re-check g_stop
+            if (rc == 0) continue;
             if (!(pfd.revents & POLLIN)) continue;
             char buf[4096];
             ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
-            if (n <= 0) break;  // EOF
+            if (n <= 0) break;
             for (ssize_t i = 0; i < n; i++) {
                 char c = buf[i];
                 if (c == '\n') {
@@ -241,13 +222,15 @@ int main() {
                         std::this_thread::sleep_for(std::chrono::milliseconds(200));
                         send("Stop >> -@ Storage");
                         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                        g_config = DaqConfig();
-                        std::string cfgPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
-                        if (!g_config.loadFromJson(cfgPath)) {
-                            std::cerr << "[main] Failed to reload " << cfgPath << "\n";
-                            continue;
+                        configModule.config().loadFromJson(g_initConfigPath);
+                        configModule.config().saveToJson(g_runtimeConfigPath);
+                        {
+                            msm::Message dist("Distribute");
+                            dist.setTarget("ConfigModule");
+                            dist.setSender("Main");
+                            dist.data.set("isInit", false);
+                            msm::MessageBus::instance().send(dist);
                         }
-                        distributeConfig(false);
                         std::this_thread::sleep_for(std::chrono::milliseconds(200));
                         std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
                         continue;
@@ -269,7 +252,15 @@ int main() {
             send("Stop >> -@ Process");
             send("Stop >> -@ Storage");
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            distributeConfig(false);
+            configModule.config().loadFromJson(g_initConfigPath);
+            configModule.config().saveToJson(g_runtimeConfigPath);
+            {
+                msm::Message dist("Distribute");
+                dist.setTarget("ConfigModule");
+                dist.setSender("Main");
+                dist.data.set("isInit", false);
+                msm::MessageBus::instance().send(dist);
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             send("Start >> -@ DAQModule");
             std::cout << "[main] Reload done\n";
@@ -287,6 +278,7 @@ int main() {
     storage.stop();
     daq.stop();
     ipc.stop();
+    configModule.stop();
 
     std::cin.setstate(std::ios::eofbit);
     close(STDIN_FILENO);

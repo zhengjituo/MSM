@@ -1,10 +1,10 @@
 #include "MessageBus.h"
 #include "NIStringParser.h"
 #include "IPCServer.h"
+#include "mod_config.h"
 #include "module_simsource.h"
 #include "module_process.h"
 #include "module_storage.h"
-#include "daq_config.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -38,34 +38,8 @@ public:
     msm::ModuleVars* getVars() override { return &tableVars_; }
 };
 
-static DaqConfig g_config;
-static const std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
-
-static void distributeConfig() {
-    send("Configure >> BatchSize=10000, FrameSize=" + std::to_string(g_config.frame_size) + ", StorageTarget=Storage -@ Process");
-    send("Configure >> SavePath=" + g_config.data_save_path
-         + ", FelName=" + g_config.fel_name
-         + ", SystemName=" + g_config.system_name
-         + ", DeviceName=" + g_config.device_name
-         + ", FileType=" + g_config.file_type
-         + ", MaxSaveSizeMB=" + std::to_string(g_config.max_save_size_mb)
-         + ", ExpNo=" + std::to_string(g_config.exp_no)
-         + ", RunSerial=" + g_config.run_serial
-         + ", BatchSize=10000"
-         + ", FrameSize=" + std::to_string(g_config.frame_size)
-         + ", Slot=" + std::to_string(g_config.slot)
-         + " -@ Storage");
-}
-
-static void loadConfig() {
-    g_config = DaqConfig();
-    if (!g_config.loadFromJson(g_initConfigPath)) {
-        std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
-        return;
-    }
-    g_config.slot = 0; // simsrc 无实际硬件，slot 用 0
-    std::cout << "[main] Config loaded\n";
-}
+static std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
+static std::string g_runtimeConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_runtime_config.json";
 
 static void printStatus(const ModuleSim& sim,
                         const ModuleProcess& process,
@@ -95,15 +69,30 @@ int main() {
 
     auto& bus = msm::MessageBus::instance();
 
-    loadConfig();
+    // ConfigModule — single source of all configuration
+    ConfigModule configModule;
+    bus.registerModule(&configModule);
+    configModule.start();
+
+    // Load initial config (synchronous direct call for setup needs)
+    if (!configModule.config().loadFromJson(g_initConfigPath)) {
+        std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
+        return 1;
+    }
+    configModule.config().slot = 0; // simsrc: no real hardware
+    // Save initial as runtime config
+    configModule.config().saveToJson(g_runtimeConfigPath);
+    std::cout << "[main] Config loaded\n";
+
+    const auto& cfg = configModule.config();
 
     int nCh = 0;
-    for (const auto& card : g_config.cards)
+    for (const auto& card : cfg.cards)
         for (const auto& ch : card.channels)
             if (ch.runEnable) nCh++;
     if (nCh == 0) nCh = 4;
 
-    size_t frameSize = g_config.frame_size;
+    size_t frameSize = cfg.frame_size;
     if (frameSize == 0) frameSize = 1152;
     std::vector<UserCircularBuffer*> simRings;
     for (int i = 0; i < nCh; i++)
@@ -118,7 +107,7 @@ int main() {
     {
         int trigLen = 512;
         std::string waveData = "1";
-        const auto* ch1 = g_config.getChannel(1, 1);
+        const auto* ch1 = cfg.getChannel(1, 1);
         if (ch1) {
             trigLen = std::stoi(ch1->trig_length);
             waveData = ch1->wave_data_enable;
@@ -160,7 +149,15 @@ int main() {
     bus.registerModule(&storage);
     process.start();
     storage.start();
-    distributeConfig();
+
+    // Distribute config to all modules via ConfigModule
+    {
+        msm::Message dist("Distribute");
+        dist.setTarget("ConfigModule");
+        dist.setSender("Main");
+        dist.data.set("isInit", false);
+        msm::MessageBus::instance().send(dist);
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::cout << "[main] SIM ready: " << sim.getRingCount() << " rings\n";
@@ -213,8 +210,16 @@ int main() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 send("Stop >> -@ Storage");
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                loadConfig();
-                distributeConfig();
+                // Load from initial config, distribute
+                configModule.config().loadFromJson(g_initConfigPath);
+                configModule.config().slot = 0;
+                {
+                    msm::Message dist("Distribute");
+                    dist.setTarget("ConfigModule");
+                    dist.setSender("Main");
+                    dist.data.set("isInit", false);
+                    msm::MessageBus::instance().send(dist);
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
                 continue;
@@ -233,8 +238,15 @@ int main() {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             send("Stop >> -@ Storage");
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            loadConfig();
-            distributeConfig();
+            configModule.config().loadFromJson(g_initConfigPath);
+            configModule.config().slot = 0;
+            {
+                msm::Message dist("Distribute");
+                dist.setTarget("ConfigModule");
+                dist.setSender("Main");
+                dist.data.set("isInit", false);
+                msm::MessageBus::instance().send(dist);
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
         }
@@ -251,6 +263,7 @@ int main() {
     storage.stop();
     sim.stop();
     ipc.stop();
+    configModule.stop();
 
     std::cin.setstate(std::ios::eofbit);
     close(STDIN_FILENO);
