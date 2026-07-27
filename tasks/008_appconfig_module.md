@@ -102,7 +102,17 @@ module_config/
 - module_tui 删除
 
 ## Done
+- [x] 创建 `module_config/` 目录及 CMakeLists.txt
+- [x] 将 `module_daq/daq_config.h/cpp` 移入 `module_config/`，类名 `DaqConfig` → `ConfigImpl`
+- [x] ConfigModule 实现（LoadFromJson/SaveToJson/Distribute/SetParam/GetParam）
+- [x] module_daq 兼容头 daq_config.h（using DaqConfig = ConfigImpl）
+- [x] 更新 CMakeLists.txt（module_config 先于 module_daq 构建）
+- [x] main_hwdaq / main_simsrc 重构（global g_config → ConfigModule 实例）
+- [x] 编译通过（msm_cli_simsrc + msm_cli_hwdaq）
+- [x] simsrc 运行测试通过（trig_id 一致，100K 帧）
 
 ## 结束 commit
 ```
+56bd066 (tag: milestone-20260727_configmodule)
+module_config: extract daq_config to reusable ConfigModule
 ```
