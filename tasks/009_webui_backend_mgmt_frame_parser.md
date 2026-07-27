@@ -22,7 +22,7 @@
 
 ### 2026-07-27  frame_parser + webUI backend mgmt
 ```
-<to be filled after commit>
+8eb2a27 webui + frame_parser: backend process mgmt, feature table, frame parsing library
 ```
 
 ## 日志
@@ -39,5 +39,6 @@
 
 ## 结束 commit
 ```
-<to be filled after commit>
+8eb2a27
+webui + frame_parser: backend process mgmt, feature table, frame parsing library
 ```
