@@ -25,13 +25,18 @@
 
 | 文件 | 内容 |
 |------|------|
-| `frame_format.md` | 物理帧结构：Header/Data/Trailer、TrigID、BunchID、Sim 模式帧生成 |
+| `frame_format_PD.md` | 物理帧结构：Header/Data/Trailer、TrigID、BunchID、帧尾特征字段 |
 
-## 当前版本状态（task 007）
+## 当前版本状态（task 009）
 
 - **main_cli** — 稳定。CLI + IPC 交互，支持 Storage 录盘
   - `msm_cli_hwdaq` + `msm_ipc_shell` + `msm_cli_simsrc`
-- **main_webui** — 开发中。IPC-to-HTTP 桥接 + Web GUI
+- **main_webui** — 稳定。IPC-to-HTTP 桥接 + 后端进程管理（Run/Quit）+ 特征表 + 帧索引控制
+  - 通过 `MSM_CLI_PATH` 环境变量或自动推断查找 CLI 二进制
+  - HW/SIM 模式选择，fork+exec 启动后端进程
+  - 状态机：launching（等 IPC）→ launching（等 DAQ ready）→ running
+  - SSE 实时推送 DAQ/Process/Storage 状态 + 特征表数据（4 通道 × 10 特征）
+- **frame_parser** — C++ 帧解析库，独立于 module_process，偏移/算法经双向验证
 
 ## P4 — archive/（历史/非核心）
 

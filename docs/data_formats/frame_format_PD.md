@@ -52,74 +52,34 @@
 - `trig_length=32`  → 帧头 64 + 64 波形 + 帧尾 64 = **192 字节**
 - `EnableWaveForm=0` → 帧头 64 + 帧尾 64 = **128 字节**（无波形）
 
-## JSON Live Bridge (`/tmp/msm_live.json` → `:8088/api/data`)
+## WebUI 状态推送
 
-C++ 端每秒输出到 `/tmp/msm_live.json`，Python `live_server.py` 通过 `GET /api/data` 提供。
-
-### 聚合统计字段
+C++ webUI（`msm_webui`）通过 SSE 实时推送 DAQ/Process/Storage 状态及特征表数据：
 
 ```json
 {
   "running": true,
-  "nch": 4,
+  "save_enabled": true,
+  "backend_alive": true,
+  "backend_mode": "sim",
+  "backend_status": "running",
+  "batch_no": 42,
+  "frame_index": 0,
   "channels": [
-    {
-      "ch": 1,
-      "frames": 654282,
-      "overflow": 0,
-      "frame_size": 1152,
-      "processed": 650000,
-      "saved": 650000,
-      "batches": 65,
-      "trig_id":    [1, 2, 3, ...],         // U32
-      "bunch_id":   [10000000000, ...],       // U64
-      "sum":        [20, 25, 18, ...],        // U32
-      "x_pos":      [0.5, 0.51, ...],         // DBL (ch1 only)
-      "y_pos":      [0.5, 0.49, ...],         // DBL (ch1 only)
-      "intensity":  [18.5, 18.7, ...]         // DBL (ch1 only)
-    }
+    {"ch":1, "daq_frames":654282, "proc_frames":650000, "proc_batches":65, "saved_frames":650000}
+  ],
+  "features": [
+    {"ch":1, "trig_id":1, "bunch_id":10000000000, "min":0.0, "max":0.5, "sum_l":20.0, "sum_h":25.0, "vpp":0.5, "x":0.5, "y":0.49, "i":18.5}
   ]
 }
 ```
 
-> **注意**: X/Y/I 字段当前 FPGA 固件尚未填充（预留后续升级），读取值为 NaN/0。
+## C++ 帧解析库
 
-数组长度为 `min(batchSize, 10000)`，每 1 秒更新一次。
+`module_process/frame_parser.h/cpp` 提供完整的帧解析实现，支持：
 
-## 控制命令
+- `parseFrameHeader()` — 解析帧头（TrigID、ADC 参数）
+- `parseFrameTrailer()` — 解析帧尾（BunchID、Min/Max/Sum_L/Sum_H/Vpp）
+- `decodeX()`, `decodeY()`, `decodeI()` — 位置/强度解码（带 PreGain × Range 校准）
 
-| 按钮 | NI String |
-|------|-----------|
-| StartAll | `Start >> ->\| Storage` → `Start >> ->\| Process` → `Start >> ->\| DAQModule` |
-| StopAll | `Stop >> ->\| DAQModule` → `Stop >> ->\| Process` → `Stop >> ->\| Storage` |
-| Save ON | `SaveEnable >> ->\| Storage` |
-| Save OFF | `SaveDisable >> ->\| Storage` |
-
-通过 `POST /api/msg` 发送，Python 服务器转发到 IPC socket `<NIString>`。
-
-## 帧尾解析代码示例
-
-```cpp
-// frame = raw frame buffer (frame_size bytes)
-const uint8_t* trailer = frame + frame_size - 64;
-
-// TrigID: header[17..20]
-uint32_t trig_id = (frame[17] << 24) | (frame[18] << 16) |
-                   (frame[19] << 8)  | frame[20];
-
-// BunchID: trailer[2..7] (U48 big-endian)
-uint64_t bunch_id = ((uint64_t)trailer[2] << 40) |
-                    ((uint64_t)trailer[3] << 32) |
-                    ((uint64_t)trailer[4] << 24) |
-                    ((uint64_t)trailer[5] << 16) |
-                    ((uint64_t)trailer[6] << 8)  | trailer[7];
-
-// Sum: trailer[8..11] (U32 big-endian)
-uint32_t sum = (trailer[8] << 24) | (trailer[9] << 16) |
-               (trailer[10] << 8) | trailer[11];
-
-// X/Y/I: trailer[24..47] (double big-endian, ch1 only)
-// 当前 FPGA 未填充此段，保留字段。
-double x = 0, y = 0, i = 0;
-// 待 FPGA 固件升级后：读取 trailer+24 起 8 字节，大端转 double
-```
+框架已通过 `test_parse` 与修正版 Python 解析结果 1:1 验证（296 笔数据集）。
