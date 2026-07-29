@@ -163,6 +163,6 @@
         "pvInfoUpdateFreHz": 2,
         "runId": 234,
         "startStorage": false,
-        "trigDelayTimeFix": 1600
+        "trigDelayTimeFix": 450
     }
 }

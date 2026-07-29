@@ -94,7 +94,7 @@ struct ConfigImpl {
     std::string run_serial = "r00001";
     int slot = 0;
     size_t frame_size = 0;
-    int trig_delay_time_fix = 1600;
+    int trig_delay_time_fix = 450;
 
     bool loadFromJson(const std::string& path);
     bool loadFromJsonString(const std::string& json);

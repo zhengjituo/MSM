@@ -147,7 +147,7 @@ bool DaqConfig::loadFromJsonString(const std::string& json) {
         run_serial = findValue(app, "runSerial");
         if (run_serial.empty()) run_serial = "r00001";
         frame_size = (size_t)findInt(app, "frameSize", 1152);
-        trig_delay_time_fix = findInt(app, "trigDelayTimeFix", 1600);
+        trig_delay_time_fix = findInt(app, "trigDelayTimeFix", 450);
     }
 
     // --- DaqParameter ---
