@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>MSM DAQ</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; font-size: 14px; }
@@ -95,10 +96,10 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
 <div id="waveSection" style="display:none">
   <h2>Waveform <span style="font-size:12px;color:#606080" id="waveMeta"></span></h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH1</div><canvas id="wave0" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
-    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH2</div><canvas id="wave1" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
-    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH3</div><canvas id="wave2" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
-    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH4</div><canvas id="wave3" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
+    <div id="chart0" style="height:180px"></div>
+    <div id="chart1" style="height:180px"></div>
+    <div id="chart2" style="height:180px"></div>
+    <div id="chart3" style="height:180px"></div>
   </div>
 </div>
 
@@ -297,18 +298,43 @@ function setFrameIndex() {
 let waveTimer = null;
 const POW20 = 1048576.0;
 const FFFF = 65535.0;
+const charts = [];
+const CHART_COLORS = ['#4ae0a0', '#f0a030', '#e04a4a', '#00d4ff'];
 
-document.getElementById('waveCheck').addEventListener('change', function() {
-  const on = this.checked;
-  document.getElementById('waveSection').style.display = on ? 'block' : 'none';
-  if (on && !waveTimer) {
-    waveTimer = setInterval(fetchWaveform, 1000);
-    fetchWaveform();
-  } else if (!on && waveTimer) {
-    clearInterval(waveTimer);
-    waveTimer = null;
-  }
-});
+function initChart(divId, chIdx) {
+  const el = document.getElementById(divId);
+  if (!el) return null;
+  const ch = echarts.init(el, null, { renderer: 'canvas' });
+  ch.setOption({
+    backgroundColor: '#0f3460',
+    grid: { left: 50, right: 16, top: 24, bottom: 28 },
+    title: { text: 'CH' + (chIdx + 1), textStyle: { color: '#a0a0b0', fontSize: 12 }, left: 4, top: 2 },
+    xAxis: {
+      type: 'value', name: 'Point', nameTextStyle: { color: '#606080', fontSize: 10 },
+      axisLabel: { color: '#808090', fontSize: 10 },
+      axisLine: { lineStyle: { color: '#0f3460' } },
+      splitLine: { lineStyle: { color: '#1a3a5c' } }
+    },
+    yAxis: {
+      type: 'value', name: 'mV', nameTextStyle: { color: '#606080', fontSize: 10 },
+      axisLabel: { color: '#808090', fontSize: 10 },
+      axisLine: { lineStyle: { color: '#0f3460' } },
+      splitLine: { lineStyle: { color: '#1a3a5c' } }
+    },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
+    ],
+    tooltip: { trigger: 'axis', textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'line',
+      data: [],
+      symbol: 'none',
+      lineStyle: { width: 1.5, color: CHART_COLORS[chIdx % 4] }
+    }]
+  });
+  return ch;
+}
 
 function base64ToUint16LE(b64) {
   const bin = atob(b64);
@@ -319,49 +345,22 @@ function base64ToUint16LE(b64) {
   return a;
 }
 
-function drawWaveform(id, raw, offset, scale, range) {
-  const c = document.getElementById(id);
-  if (!c) return;
-  const ctx = c.getContext('2d');
-  const W = c.width, H = c.height;
-  ctx.clearRect(0, 0, W, H);
-
-  // calibrate
-  const scaleF = scale / POW20;
-  const rangeF = range / FFFF;
-  const n = raw.length;
-  const vals = new Float64Array(n);
-  let yMin = Infinity, yMax = -Infinity;
-  for (let i = 0; i < n; i++) {
-    const v = (raw[i] - offset) * scaleF * rangeF;
-    vals[i] = v;
-    if (v < yMin) yMin = v;
-    if (v > yMax) yMax = v;
+document.getElementById('waveCheck').addEventListener('change', function() {
+  const on = this.checked;
+  document.getElementById('waveSection').style.display = on ? 'block' : 'none';
+  if (on) {
+    for (let i = 0; i < 4; i++) {
+      charts[i] = charts[i] || initChart('chart' + i, i);
+      charts[i] && charts[i].resize();
+    }
+    if (!waveTimer) {
+      waveTimer = setInterval(fetchWaveform, 1000);
+      fetchWaveform();
+    }
+  } else {
+    if (waveTimer) { clearInterval(waveTimer); waveTimer = null; }
   }
-
-  // Y range with padding
-  let yPad = (yMax - yMin) * 0.1 || 1;
-  if (yMin === yMax) { yMin -= 1; yMax += 1; }
-  yMin -= yPad; yMax += yPad;
-
-  const xStep = W / (n - 1);
-  ctx.strokeStyle = '#4ae0a0';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const x = i * xStep;
-    const y = H - ((vals[i] - yMin) / (yMax - yMin)) * H;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-
-  // labels
-  ctx.fillStyle = '#a0a0b0';
-  ctx.font = '11px sans-serif';
-  ctx.fillText(yMax.toFixed(1) + ' mV', 4, 12);
-  ctx.fillText(yMin.toFixed(1) + ' mV', 4, H - 4);
-  ctx.fillText(n + ' pts', W - 60, H - 4);
-}
+});
 
 async function fetchWaveform() {
   try {
@@ -370,9 +369,15 @@ async function fetchWaveform() {
     if (!d.channels || d.channels.length === 0) return;
     document.getElementById('waveMeta').textContent = 'batch #' + d.batch_no;
     for (const ch of d.channels) {
-      if (!ch.wave_raw) continue;
+      const idx = ch.ch - 1;
+      if (!ch.wave_raw || !charts[idx]) continue;
       const raw = base64ToUint16LE(ch.wave_raw);
-      drawWaveform('wave' + (ch.ch - 1), raw, ch.offset, ch.scale, ch.range);
+      const scaleF = ch.scale / POW20;
+      const rangeF = ch.range / FFFF;
+      const vals = [];
+      for (let i = 0; i < raw.length; i++)
+        vals.push([i, (raw[i] - ch.offset) * scaleF * rangeF]);
+      charts[idx].setOption({ series: [{ data: vals }] }, { notMerge: false });
     }
   } catch(e) { /* ignore */ }
 }
@@ -382,6 +387,7 @@ fetch('/api/status').then(r=>r.json()).then(d => {
   render({...d, channels: d.channels || [], features: d.features || []});
 }).catch(() => {});
 
+window.addEventListener('resize', () => { for (const ch of charts) if (ch) ch.resize(); });
 connectSSE();
 </script>
 </body>
