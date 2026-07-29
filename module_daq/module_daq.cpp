@@ -284,27 +284,27 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "IpLogicRST", chCfg.ip_logic_rst.c_str());
             if (!chCfg.k1st.empty())
                 CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionK1st",
-                    fixedPointHex3(std::stod(chCfg.k1st)).c_str());
+                    chCfg.k1st.c_str());
             if (!chCfg.b1st.empty())
                 CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionB1st",
-                    fixedPointHex3(std::stod(chCfg.b1st)).c_str());
+                    chCfg.b1st.c_str());
             // Kx/Ky/K/OffsetX/OffsetY 仅通道1
             if (ch == 1) {
                 if (!chCfg.kx.empty())
                     CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionKX",
-                        fixedPointHex2(std::stod(chCfg.kx)).c_str());
+                        chCfg.kx.c_str());
                 if (!chCfg.ky.empty())
                     CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionKY",
-                        fixedPointHex2(std::stod(chCfg.ky)).c_str());
+                        chCfg.ky.c_str());
                 if (!chCfg.k.empty())
                     CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionK",
-                        fixedPointHex2(std::stod(chCfg.k)).c_str());
+                        chCfg.k.c_str());
                 if (!chCfg.offset_x.empty())
                     CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionOffsetX",
-                        fixedPointHex2(std::stod(chCfg.offset_x)).c_str());
+                        chCfg.offset_x.c_str());
                 if (!chCfg.offset_y.empty())
                     CxDeviceSetChannelValue(hCard, ch, "EffectiveDataExtractionOffsetY",
-                        fixedPointHex2(std::stod(chCfg.offset_y)).c_str());
+                        chCfg.offset_y.c_str());
             }
             std::cout << "[ModuleDAQ]   ch" << ch << " configured\n";
 

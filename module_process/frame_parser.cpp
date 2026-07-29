@@ -78,7 +78,7 @@ CalibratedFrame calibrate(const FrameHeader& hdr, const FrameTrailer& tlr) {
     cal.x = (double)(int64_t)tlr.x_raw / TWO_POW_32;
     cal.y = (double)(int64_t)tlr.y_raw / TWO_POW_32;
 
-    // I: int64 / 2^32 * 2.0, THEN * PreGain / 2^20 * Range / 0xFFFF (ref: lines 130-131)
+    // I: int64 / 2^32 * 2.0, THEN * PreGain / 2^20 * Range / 0xFFFF (ref data_save_parameter_define.cpp:130-131)
     double lightIntensity = (double)(int64_t)tlr.i_raw / TWO_POW_32 * 2.0;
     cal.i = lightIntensity * scale * range_factor;
 
