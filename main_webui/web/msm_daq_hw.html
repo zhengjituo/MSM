@@ -96,10 +96,10 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
 <div id="waveSection" style="display:none">
   <h2>Waveform <span style="font-size:12px;color:#606080" id="waveMeta"></span></h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div id="chart0" style="height:180px"></div>
-    <div id="chart1" style="height:180px"></div>
-    <div id="chart2" style="height:180px"></div>
-    <div id="chart3" style="height:180px"></div>
+    <div id="chart0" style="height:180px;width:100%"></div>
+    <div id="chart1" style="height:180px;width:100%"></div>
+    <div id="chart2" style="height:180px;width:100%"></div>
+    <div id="chart3" style="height:180px;width:100%"></div>
   </div>
 </div>
 
@@ -349,10 +349,12 @@ document.getElementById('waveCheck').addEventListener('change', function() {
   const on = this.checked;
   document.getElementById('waveSection').style.display = on ? 'block' : 'none';
   if (on) {
-    for (let i = 0; i < 4; i++) {
-      charts[i] = charts[i] || initChart('chart' + i, i);
-      charts[i] && charts[i].resize();
-    }
+    setTimeout(() => {
+      for (let i = 0; i < 4; i++) {
+        charts[i] = charts[i] || initChart('chart' + i, i);
+        charts[i] && charts[i].resize();
+      }
+    }, 0);
     if (!waveTimer) {
       waveTimer = setInterval(fetchWaveform, 1000);
       fetchWaveform();
