@@ -389,7 +389,10 @@ fetch('/api/status').then(r=>r.json()).then(d => {
   render({...d, channels: d.channels || [], features: d.features || []});
 }).catch(() => {});
 
-window.addEventListener('resize', () => { for (const ch of charts) if (ch) ch.resize(); });
+const waveObserver = new ResizeObserver(() => {
+  for (const ch of charts) if (ch) ch.resize();
+});
+document.querySelectorAll('#waveSection [id^="chart"]').forEach(el => waveObserver.observe(el));
 connectSSE();
 </script>
 </body>
