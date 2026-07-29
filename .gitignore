@@ -51,6 +51,7 @@ __pycache__/
 # Session / runtime
 .msm_session
 config/runtime_config.json
+config/app_runtime_config.json
 
 # Backup
 backup/
