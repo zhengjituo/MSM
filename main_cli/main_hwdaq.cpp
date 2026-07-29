@@ -261,9 +261,7 @@ int main() {
                 dist.data.set("isInit", false);
                 msm::MessageBus::instance().send(dist);
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            send("Start >> -@ DAQModule");
-            std::cout << "[main] Reload done\n";
+            std::cout << "[main] Reload done (idle). Click Start to resume.\n";
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
