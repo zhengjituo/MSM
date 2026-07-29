@@ -68,6 +68,7 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
         updateConfig();
     } else if (msg.cmd == "Configure" || msg.cmd == "ReadConfig") {
         onReadConfig(msg.data);
+        updateConfig();
     } else if (msg.cmd == "InitHW") {
         initHW();
     } else if (msg.cmd == "UpdateConfig") {
