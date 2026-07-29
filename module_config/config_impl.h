@@ -47,9 +47,18 @@ struct ChannelConfig {
     std::string ip_global_rst = "0";
     std::string ip_logic_rst = "0";
 
+    int nsPerPoint() const {
+        if (down_sample == "500MSa/s") return 2;
+        if (down_sample == "250MSa/s") return 4;
+        if (down_sample == "125MSa/s") return 8;
+        if (down_sample == "62.5MSa/s") return 16;
+        if (down_sample == "31.25MSa/s") return 32;
+        return 1; // "1GSa/s" or default
+    }
+
     int GetFrameLength() const {
         if (wave_data_enable == "0" || wave_data_enable == "false") return 128;
-        return std::stoi(trig_length) * 2 + 128;
+        return (std::stoi(trig_length) / nsPerPoint()) * 2 + 128;
     }
 
     size_t ring_buffer_size_mb = 64;

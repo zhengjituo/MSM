@@ -379,6 +379,18 @@ static const std::map<std::string, int> KDownSampleMap = {
     {"31.25MSa/s", 32},
 };
 
+// TrigLength ns → 对齐到 32 点倍数的实际 ns
+static std::string alignTrigLengthNs(const std::string& trigLenNs, const std::string& downSample) {
+    int ns = std::stoi(trigLenNs);
+    int nsPerPoint = 1;
+    auto it = KDownSampleMap.find(downSample);
+    if (it != KDownSampleMap.end()) nsPerPoint = it->second;
+    int points = ns / nsPerPoint;
+    if (points < 32) points = 32;
+    int alignedPoints = ((points + 31) / 32) * 32;
+    return std::to_string(alignedPoints * nsPerPoint);
+}
+
 std::map<std::string, std::string> DaqConfig::toKeyValues() const {
     std::map<std::string, std::string> kv;
 
@@ -415,7 +427,7 @@ std::map<std::string, std::string> DaqConfig::toKeyValues() const {
 
             kv[chPrefix + "TrigSource"] = ch.trig_source;
             kv[chPrefix + "TrigMode"] = ch.trig_mode;
-            kv[chPrefix + "TrigLength"] = ch.trig_length;
+            kv[chPrefix + "TrigLength"] = alignTrigLengthNs(ch.trig_length, ch.down_sample);
             kv[chPrefix + "TrigLevel"] = ch.trig_level;
             kv[chPrefix + "TrigPulseWidth"] = ch.trig_pulse_width;
             kv[chPrefix + "TrigPolarity"] = ch.trig_polarity;
