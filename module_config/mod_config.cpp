@@ -191,6 +191,7 @@ void ConfigModule::onSetParam(const std::string& pathVal) {
             else if (field == "dead_time") ch.dead_time = val;
             else if (field == "finite_trig_num") ch.finite_trig_num = val;
             else if (field == "work_mode") ch.work_mode = val;
+            else if (field == "down_sample") ch.down_sample = val;
             else if (field == "runEnable") ch.runEnable = (val == "1" || val == "true");
             else { std::cerr << "[ConfigModule] unknown field " << field << "\n"; return; }
 

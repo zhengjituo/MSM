@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iostream>
 #include <cstdlib>
+#include <map>
 
 // ============================================================
 // 极简 JSON 解析工具（仅处理本项目配置格式）
@@ -369,6 +370,15 @@ bool DaqConfig::saveToJson(const std::string& path) const {
     return true;
 }
 
+static const std::map<std::string, int> KDownSampleMap = {
+    {"1GSa/s", 1},
+    {"500MSa/s", 2},
+    {"250MSa/s", 4},
+    {"125MSa/s", 8},
+    {"62.5MSa/s", 16},
+    {"31.25MSa/s", 32},
+};
+
 std::map<std::string, std::string> DaqConfig::toKeyValues() const {
     std::map<std::string, std::string> kv;
 
@@ -435,6 +445,11 @@ std::map<std::string, std::string> DaqConfig::toKeyValues() const {
 
             kv[chPrefix + "IpGlobalRST"] = ch.ip_global_rst;
             kv[chPrefix + "IpLogicRST"] = ch.ip_logic_rst;
+
+            int ds = 1;
+            auto it = KDownSampleMap.find(ch.down_sample);
+            if (it != KDownSampleMap.end()) ds = it->second;
+            kv[chPrefix + "DownSample"] = std::to_string(ds);
         }
     }
 

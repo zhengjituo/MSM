@@ -192,6 +192,9 @@ bool ConfigImpl::loadFromJsonString(const std::string& json) {
                 ch.ip_global_rst = findValue(chb, "IpGlobalRST");
                 ch.ip_logic_rst = findValue(chb, "IpLogicRST");
 
+                ch.down_sample = findValue(chb, "DownSample");
+                if (ch.down_sample.empty()) ch.down_sample = "1GSa/s";
+
                 card.channels.push_back(ch);
             }
         }
@@ -273,6 +276,7 @@ bool ConfigImpl::saveToJson(const std::string& path) const {
                 const auto& ch = card.channels[chi];
                 f << "                    \"Channel#" << ch.channel << "\": {\n";
                 f << "                        \"B1st\": \"" << ch.b1st << "\",\n";
+                f << "                        \"DownSample\": \"" << ch.down_sample << "\",\n";
                 f << "                        \"DeadTime\": \"" << ch.dead_time << "\",\n";
                 f << "                        \"ExternalTrigPolarity\": \"" << ch.external_trig_polarity << "\",\n";
                 f << "                        \"FiniteTrigNum\": \"" << ch.finite_trig_num << "\",\n";

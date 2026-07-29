@@ -42,6 +42,7 @@ struct ChannelConfig {
     std::string value_threshold_high = "20";
     std::string value_threshold_low = "-20";
     std::string external_trig_polarity = "RisingE";
+    std::string down_sample = "1GSa/s";
 
     std::string ip_global_rst = "0";
     std::string ip_logic_rst = "0";
