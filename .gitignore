@@ -54,3 +54,4 @@ config/runtime_config.json
 
 # Backup
 backup/
+*.bak
