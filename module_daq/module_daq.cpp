@@ -12,6 +12,17 @@
 #include <cmath>
 #include <cstdio>
 #include <climits>
+#include <unordered_map>
+
+// WorkMode string → int mapping (ref Qt KWorkModeMap)
+static int mapWorkMode(const std::string& mode) {
+    static const std::unordered_map<std::string, int> m = {
+        {"vpp", 0}, {"vmin", 1}, {"vmax", 2},
+        {"sum_th_h", 3}, {"sum_th_l", 4}
+    };
+    auto it = m.find(mode);
+    return (it != m.end()) ? it->second : 0;
+}
 
 
 ModuleDAQ::ModuleDAQ()
@@ -265,7 +276,7 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "ExternalTrigPolarity", chCfg.external_trig_polarity.c_str());
             CxDeviceSetChannelValue(hCard, ch, "DeadTime", chCfg.dead_time.c_str());
             CxDeviceSetChannelValue(hCard, ch, "FiniteTrigNum", chCfg.finite_trig_num.c_str());
-            CxDeviceSetChannelValue(hCard, ch, "WorkMode", chCfg.work_mode.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "WorkMode", std::to_string(mapWorkMode(chCfg.work_mode)).c_str());
             CxDeviceSetChannelValue(hCard, ch, "WaveDataEnable", chCfg.wave_data_enable.c_str());
             CxDeviceSetChannelValue(hCard, ch, "ValueThresholdHigh", chCfg.value_threshold_high.c_str());
             CxDeviceSetChannelValue(hCard, ch, "ValueThresholdLow", chCfg.value_threshold_low.c_str());
