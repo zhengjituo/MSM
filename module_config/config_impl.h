@@ -20,7 +20,7 @@ struct ChannelConfig {
     std::string trig_pulse_width = "16";
     std::string trig_polarity = "Rising";
     std::string trig_delay_time = "0";
-    std::string trig_position = "178";
+    std::string trig_position = "0";
     std::string trig_window_start = "0";
 
     std::string voltage_range = "1000";
