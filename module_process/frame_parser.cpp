@@ -109,3 +109,26 @@ std::vector<double> extractWaveform(const uint8_t* data, size_t len, const Frame
 
     return result;
 }
+
+WaveformRaw extractWaveformRaw(const uint8_t* data, size_t len, const FrameHeader& hdr) {
+    WaveformRaw result;
+    size_t trig_length = 0;
+    if (hdr.packet_length >= HEADER_SIZE + TRAILER_SIZE) {
+        trig_length = (hdr.packet_length - HEADER_SIZE - TRAILER_SIZE) / 2;
+    }
+    if (trig_length == 0 || len < HEADER_SIZE + trig_length * 2 + TRAILER_SIZE) {
+        result.offset = hdr.adc_offset;
+        result.scale = hdr.adc_scale;
+        result.range = hdr.adc_range;
+        return result;
+    }
+    result.samples.reserve(trig_length);
+    for (size_t i = 0; i < trig_length; i++) {
+        size_t off = HEADER_SIZE + i * 2;
+        result.samples.push_back(readU16BE(data + off));
+    }
+    result.offset = hdr.adc_offset;
+    result.scale = hdr.adc_scale;
+    result.range = hdr.adc_range;
+    return result;
+}

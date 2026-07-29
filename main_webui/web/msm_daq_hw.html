@@ -67,6 +67,7 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
 <!-- DAQ control -->
 <div class="toolbar">
   <label><input type="checkbox" id="saveCheck" onchange="toggleSave()" disabled> Save</label>
+  <label><input type="checkbox" id="waveCheck"> Waveform</label>
   <button class="btn btn-start" id="btnStart" onclick="doStart()" disabled>▶ Start</button>
   <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>■ Stop</button>
   <button class="btn btn-reload" id="btnReload" onclick="doReload()" disabled>↻ Reload</button>
@@ -90,6 +91,16 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <thead><tr id="featHeader"></tr></thead>
   <tbody id="featBody"></tbody>
 </table>
+
+<div id="waveSection" style="display:none">
+  <h2>Waveform <span style="font-size:12px;color:#606080" id="waveMeta"></span></h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH1</div><canvas id="wave0" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
+    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH2</div><canvas id="wave1" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
+    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH3</div><canvas id="wave2" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
+    <div><div style="color:#a0a0b0;font-size:12px;margin-bottom:2px">CH4</div><canvas id="wave3" width="600" height="160" style="width:100%;background:#0f3460;border-radius:4px"></canvas></div>
+  </div>
+</div>
 
 <div id="statusBar">
   <span id="statusText">connecting...</span>
@@ -280,6 +291,90 @@ function toggleSave() {
 function setFrameIndex() {
   const v = document.getElementById('idxInput').value;
   post('/api/msg', 'SetFrameIndex >> index=' + v + ' -@ Process');
+}
+
+// Waveform
+let waveTimer = null;
+const POW20 = 1048576.0;
+const FFFF = 65535.0;
+
+document.getElementById('waveCheck').addEventListener('change', function() {
+  const on = this.checked;
+  document.getElementById('waveSection').style.display = on ? 'block' : 'none';
+  if (on && !waveTimer) {
+    waveTimer = setInterval(fetchWaveform, 1000);
+    fetchWaveform();
+  } else if (!on && waveTimer) {
+    clearInterval(waveTimer);
+    waveTimer = null;
+  }
+});
+
+function base64ToUint16LE(b64) {
+  const bin = atob(b64);
+  const n = bin.length >> 1;
+  const a = new Uint16Array(n);
+  for (let i = 0, j = 0; i < n; i++, j += 2)
+    a[i] = bin.charCodeAt(j) | (bin.charCodeAt(j + 1) << 8);
+  return a;
+}
+
+function drawWaveform(id, raw, offset, scale, range) {
+  const c = document.getElementById(id);
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // calibrate
+  const scaleF = scale / POW20;
+  const rangeF = range / FFFF;
+  const n = raw.length;
+  const vals = new Float64Array(n);
+  let yMin = Infinity, yMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const v = (raw[i] - offset) * scaleF * rangeF;
+    vals[i] = v;
+    if (v < yMin) yMin = v;
+    if (v > yMax) yMax = v;
+  }
+
+  // Y range with padding
+  let yPad = (yMax - yMin) * 0.1 || 1;
+  if (yMin === yMax) { yMin -= 1; yMax += 1; }
+  yMin -= yPad; yMax += yPad;
+
+  const xStep = W / (n - 1);
+  ctx.strokeStyle = '#4ae0a0';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const x = i * xStep;
+    const y = H - ((vals[i] - yMin) / (yMax - yMin)) * H;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // labels
+  ctx.fillStyle = '#a0a0b0';
+  ctx.font = '11px sans-serif';
+  ctx.fillText(yMax.toFixed(1) + ' mV', 4, 12);
+  ctx.fillText(yMin.toFixed(1) + ' mV', 4, H - 4);
+  ctx.fillText(n + ' pts', W - 60, H - 4);
+}
+
+async function fetchWaveform() {
+  try {
+    const r = await fetch('/api/waveform');
+    const d = await r.json();
+    if (!d.channels || d.channels.length === 0) return;
+    document.getElementById('waveMeta').textContent = 'batch #' + d.batch_no;
+    for (const ch of d.channels) {
+      if (!ch.wave_raw) continue;
+      const raw = base64ToUint16LE(ch.wave_raw);
+      drawWaveform('wave' + (ch.ch - 1), raw, ch.offset, ch.scale, ch.range);
+    }
+  } catch(e) { /* ignore */ }
 }
 
 // Initial load

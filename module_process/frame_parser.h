@@ -47,6 +47,13 @@ struct FrameTrailer {
     int64_t  i_raw;            // 40-47 (ref: line 130)
 };
 
+struct WaveformRaw {
+    std::vector<uint16_t> samples;
+    uint16_t offset;
+    uint32_t scale;
+    uint16_t range;
+};
+
 struct CalibratedFrame {
     double bunch_id;
     double min_val;
@@ -63,6 +70,7 @@ bool parseHeader(const uint8_t* data, size_t len, FrameHeader& hdr);
 bool parseTrailer(const uint8_t* data, size_t len, FrameTrailer& tlr);
 CalibratedFrame calibrate(const FrameHeader& hdr, const FrameTrailer& tlr);
 std::vector<double> extractWaveform(const uint8_t* data, size_t len, const FrameHeader& hdr);
+WaveformRaw extractWaveformRaw(const uint8_t* data, size_t len, const FrameHeader& hdr);
 
 // Lower-level helpers
 inline uint16_t readU16BE(const uint8_t* p) {

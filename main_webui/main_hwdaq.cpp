@@ -182,6 +182,10 @@ struct FeatureRow {
     uint64_t bunch_id = 0;
     double min_val = 0, max_val = 0, sum_l = 0, sum_h = 0, vpp = 0;
     double x = 0, y = 0, i_val = 0;
+    std::string wave_raw;
+    int wave_offset = 0;
+    int wave_scale = 0;
+    int wave_range = 0;
 };
 
 struct ChannelStatus {
@@ -260,6 +264,10 @@ static AppSnapshot parseSnapshot(json& daqJ, json& procJ, json& storJ, bool save
         f.x = parseDouble(procJ, p + "x");
         f.y = parseDouble(procJ, p + "y");
         f.i_val = parseDouble(procJ, p + "i");
+        f.wave_raw = procJ.value(p + "wave_raw", "");
+        f.wave_offset = (int)parseInt64(procJ, p + "wave_offset");
+        f.wave_scale = (int)parseInt64(procJ, p + "wave_scale");
+        f.wave_range = (int)parseInt64(procJ, p + "wave_range");
     }
     // Backend status
     {
@@ -450,6 +458,28 @@ int main() {
     svr.Get("/api/status", [](const httplib::Request&, httplib::Response& res) {
         std::lock_guard<std::mutex> lock(g_snapMtx);
         res.set_content(buildSseData(g_snap), "application/json");
+    });
+
+    svr.Get("/api/waveform", [](const httplib::Request&, httplib::Response& res) {
+        std::lock_guard<std::mutex> lock(g_snapMtx);
+        json j;
+        j["batch_no"] = g_snap.batchNo;
+        json channels = json::array();
+        for (int i = 0; i < g_snap.channels; i++) {
+            auto& f = g_snap.feat[i];
+            if (f.wave_raw.empty()) continue;
+            json ch;
+            ch["ch"] = i + 1;
+            ch["trig_id"] = f.trig_id;
+            ch["bunch_id"] = (int64_t)f.bunch_id;
+            ch["offset"] = f.wave_offset;
+            ch["scale"] = f.wave_scale;
+            ch["range"] = f.wave_range;
+            ch["wave_raw"] = f.wave_raw;
+            channels.push_back(ch);
+        }
+        j["channels"] = channels;
+        res.set_content(j.dump(), "application/json");
     });
 
     svr.Get("/", [](const httplib::Request&, httplib::Response& res) {

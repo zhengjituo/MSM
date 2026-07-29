@@ -7,6 +7,23 @@
 #include <iomanip>
 #include <sstream>
 
+static const char kB64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static std::string base64Encode(const void* data, size_t len) {
+    const uint8_t* in = (const uint8_t*)data;
+    std::string out;
+    out.reserve(((len + 2) / 3) * 4);
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t v = ((uint32_t)in[i] << 16);
+        if (i + 1 < len) v |= ((uint32_t)in[i + 1] << 8);
+        if (i + 2 < len) v |= in[i + 2];
+        out += kB64[(v >> 18) & 0x3F];
+        out += kB64[(v >> 12) & 0x3F];
+        out += (i + 1 < len) ? kB64[(v >> 6) & 0x3F] : '=';
+        out += (i + 2 < len) ? kB64[v & 0x3F] : '=';
+    }
+    return out;
+}
+
 static std::string fmtDouble(double v, int prec = 6) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(prec) << v;
@@ -245,6 +262,15 @@ void ModuleProcess::onStatus(msm::Message& response) {
                 response.data.set(p + "x", fmtDouble(batchData_[i].x[0]));
                 response.data.set(p + "y", fmtDouble(batchData_[i].y[0]));
                 response.data.set(p + "i", fmtDouble(batchData_[i].i[0]));
+                if (!batchData_[i].wave_raw.empty()) {
+                    std::string raw_bytes(
+                        (const char*)batchData_[i].wave_raw.data(),
+                        batchData_[i].wave_raw.size() * sizeof(uint16_t));
+                    response.data.set(p + "wave_raw", base64Encode(raw_bytes.data(), raw_bytes.size()));
+                    response.data.set(p + "wave_offset", std::to_string(batchData_[i].wave_offset));
+                    response.data.set(p + "wave_scale", std::to_string(batchData_[i].wave_scale));
+                    response.data.set(p + "wave_range", std::to_string(batchData_[i].wave_range));
+                }
             }
         }
     }
@@ -286,6 +312,12 @@ void ModuleProcess::extractFrame(const uint8_t* frame, size_t flen, int ch) {
     batchData_[ch].x[0] = cal.x;
     batchData_[ch].y[0] = cal.y;
     batchData_[ch].i[0] = cal.i;
+
+    auto wraw = extractWaveformRaw(frame, flen, hdr);
+    batchData_[ch].wave_raw = std::move(wraw.samples);
+    batchData_[ch].wave_offset = wraw.offset;
+    batchData_[ch].wave_scale = wraw.scale;
+    batchData_[ch].wave_range = wraw.range;
 
     lastTrigId_[ch].store((int64_t)hdr.trig_id);
     lastBunchId_[ch].store((int64_t)cal.bunch_id);

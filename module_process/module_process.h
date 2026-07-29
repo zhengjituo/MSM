@@ -26,6 +26,10 @@ public:
         std::vector<double> x;
         std::vector<double> y;
         std::vector<double> i;
+        std::vector<uint16_t> wave_raw;
+        uint16_t wave_offset = 0;
+        uint32_t wave_scale = 0;
+        uint16_t wave_range = 0;
         int64_t batchNo = 0;
         size_t count = 0;
     };
