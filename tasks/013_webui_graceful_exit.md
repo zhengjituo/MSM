@@ -32,3 +32,12 @@
 ```
 bab9cf6 fix: webui graceful exit - call svr.stop() before httpThread.join() (unblocks listen), add SIGHUP handler
 ```
+
+## Session Git Log
+
+### 2026-08-12  webui 优雅退出
+```
+bab9cf6 fix: webui graceful exit - call svr.stop() before httpThread.join() (unblocks listen), add SIGHUP handler
+a3c9b80 task 013: close task with end commit
+```
+

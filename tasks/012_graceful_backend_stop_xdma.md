@@ -30,3 +30,12 @@ c32bdb0 docs: rewrite README as GitHub entry (CSM-inspired C++ framework + DAQ e
 ```
 207690b fix: stopBackend waits up to 10s for graceful closeHW before SIGKILL (release xdma)
 ```
+
+## Session Git Log
+
+### 2026-08-12  webui 后台进程优雅退出
+```
+207690b fix: stopBackend waits up to 10s for graceful closeHW before SIGKILL (release xdma)
+2b4b395 task 012: close task with end commit
+```
+
