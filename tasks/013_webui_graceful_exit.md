@@ -30,5 +30,5 @@
 
 ## 结束 commit
 ```
-（待填）
+bab9cf6 fix: webui graceful exit - call svr.stop() before httpThread.join() (unblocks listen), add SIGHUP handler
 ```
