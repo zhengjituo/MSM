@@ -28,5 +28,5 @@ c32bdb0 docs: rewrite README as GitHub entry (CSM-inspired C++ framework + DAQ e
 
 ## 结束 commit
 ```
-（待填）
+207690b fix: stopBackend waits up to 10s for graceful closeHW before SIGKILL (release xdma)
 ```
