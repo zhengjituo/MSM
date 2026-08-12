@@ -37,7 +37,7 @@
                         "cardIndex": 1,
                         "channel": 1,
                         "runEnable": true,
-                        "slot": 5
+                        "slot": 3
                     },
                     "Channel#2": {
                         "B1st": "0.00",
@@ -71,7 +71,7 @@
                         "cardIndex": 1,
                         "channel": 2,
                         "runEnable": true,
-                        "slot": 5
+                        "slot": 3
                     },
                     "Channel#3": {
                         "B1st": "0.00",
@@ -105,7 +105,7 @@
                         "cardIndex": 1,
                         "channel": 3,
                         "runEnable": true,
-                        "slot": 5
+                        "slot": 3
                     },
                     "Channel#4": {
                         "B1st": "0.00",
@@ -139,10 +139,10 @@
                         "cardIndex": 1,
                         "channel": 4,
                         "runEnable": true,
-                        "slot": 5
+                        "slot": 3
                     }
                 },
-                "Slot": 5
+                "Slot": 3
             },
             "Card#3010": {
                 "CardIndex": 3010,
