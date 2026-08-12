@@ -347,6 +347,7 @@ int main() {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, [](int) { g_stop.store(true); });
     signal(SIGTERM, [](int) { g_stop.store(true); });
+    signal(SIGHUP, [](int) { g_stop.store(true); });
 
     IPCClient ipc;
     // Try to connect in case backend was started externally
@@ -544,6 +545,7 @@ int main() {
 
     ipc.close();
     stopBackend();
+    svr.stop();
     if (httpThread.joinable()) httpThread.join();
     std::cout << "[webui] shutdown\n";
     return 0;
