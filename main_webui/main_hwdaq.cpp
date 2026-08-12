@@ -101,13 +101,23 @@ static void stopBackend() {
         g_backendStatus = BS_IDLE;
         g_backendMode.clear();
     }
+    // Graceful stop: the backend's SIGTERM handler drives the same shutdown
+    // path as IPC QUIT (Stop DAQ -> closeHW -> CxDeviceSdkDeinit), which is the
+    // only place xdma resources get released. Give it a generous budget to
+    // finish before ever considering SIGKILL.
     ::kill(pid, SIGTERM);
-    // Give it a moment, then SIGKILL
-    for (int i = 0; i < 10; i++) {
+    const int kGracefulMs = 10000;
+    const int kGraceStepMs = 100;
+    for (int waited = 0; waited < kGracefulMs; waited += kGraceStepMs) {
         int st = 0;
         if (::waitpid(pid, &st, WNOHANG) == pid) return;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kGraceStepMs));
     }
+    // Still alive after the graceful budget: the backend is hung (e.g. wedged
+    // inside closeHW). There is no safe way to release xdma from here, so
+    // terminate it outright to avoid an unkillable orphan.
+    std::cerr << "[webui] backend did not exit gracefully, forcing SIGKILL (pid "
+              << pid << ")\n";
     ::kill(pid, SIGKILL);
     ::waitpid(pid, nullptr, 0);
 }
