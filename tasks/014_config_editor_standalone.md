@@ -54,3 +54,9 @@
 - 编辑器完全独立；与原 DAQ 程序交集 = config 按钮 + 运行状态监视 + 配置文件读写
 - 以 `config/app_initial_config_backup.json` 为中介测试，不污染主配置文件
 - 调试方式：gdb `catch throw` 捕获无限递归（栈溢出）；python urllib 替代缺失的 curl
+
+## 结束 commit
+```
+4d25c91  feat: independent config editor (Phase A) - ConfigEditorModule + msm_config_editor REST + webUI
+```
+阶段 A（独立 config 编辑器）完结。阶段 B（webui 入口按钮、main_cli 迁移复用、module_storage 磁盘安全）待后续。
