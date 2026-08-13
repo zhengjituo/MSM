@@ -233,16 +233,27 @@ function renderAppGrid() {
     lb.textContent = key;
     const val = ac[key];
     let input;
-    const numeric = typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(String(val));
+    const isNumber = typeof val === 'number' || (typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val) && (ac[key + '_type'] === undefined));
     input = document.createElement('input');
     if (typeof val === 'boolean') {
       input.type = 'checkbox';
       input.checked = val;
       input.dataset.ischk = '1';
-    } else {
-      input.type = numeric ? 'number' : 'text';
+      input.dataset.jtype = 'bool';
+    } else if (typeof val === 'number') {
+      input.type = 'number';
       input.step = 'any';
       input.value = String(val);
+      input.dataset.jtype = 'number';
+    } else if (isNumber) {
+      input.type = 'number';
+      input.step = 'any';
+      input.value = String(val);
+      input.dataset.jtype = 'number';
+    } else {
+      input.type = 'text';
+      input.value = String(val);
+      input.dataset.jtype = 'string';
     }
     input.dataset.key = key;
     wrap.appendChild(lb);
@@ -255,7 +266,9 @@ async function saveApp() {
   if (acquiring) { toast('采集运行中，请先停止'); return; }
   const ac = {};
   document.querySelectorAll('#appGrid input[data-key]').forEach(el => {
-    if (el.dataset.ischk) ac[el.dataset.key] = el.checked;
+    const jt = el.dataset.jtype;
+    if (jt === 'bool') ac[el.dataset.key] = el.checked;
+    else if (jt === 'number') ac[el.dataset.key] = parseFloat(el.value) || 0;
     else ac[el.dataset.key] = el.value;
   });
   const { r, j } = await fetchJSON('/api/config/save-app', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ app_config: ac }) });

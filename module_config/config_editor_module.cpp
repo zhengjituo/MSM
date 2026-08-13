@@ -329,7 +329,25 @@ std::string ConfigEditorModule::applyAppEdit(const std::string& appJsonStr) {
         return std::string("error:parse:") + e.what();
     }
     auto& app = appConfigJson();
-    for (auto& [k, v] : ac.items()) app[k] = v;
+    for (auto& [k, v] : ac.items()) {
+        // 类型保护：原值为数字/布尔，新值为字符串时尝试转换；转换失败则拒绝整次保存
+        if (app.contains(k) && v.is_string()) {
+            auto& old = app[k];
+            if (old.is_boolean()) {
+                std::string s = v.get<std::string>();
+                if (s == "true") v = true;
+                else if (s == "false") v = false;
+                else return "error:type_mismatch:" + k;
+            } else if (old.is_number()) {
+                std::string s = v.get<std::string>();
+                char* end = nullptr;
+                double d = std::strtod(s.c_str(), &end);
+                if (end && *end == '\0' && !s.empty()) v = d;
+                else return "error:type_mismatch:" + k;
+            }
+        }
+        app[k] = v;
+    }
     return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
 }
 

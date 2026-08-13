@@ -60,3 +60,10 @@
 4d25c91  feat: independent config editor (Phase A) - ConfigEditorModule + msm_config_editor REST + webUI
 ```
 阶段 A（独立 config 编辑器）完结。阶段 B（webui 入口按钮、main_cli 迁移复用、module_storage 磁盘安全）待后续。
+
+## 追加修复（2026-08-13）
+- **Bug：app_config 数字字段被写为字符串**。根因：前端 `saveApp()` 用 `el.value` 收集（number 输入框返回字符串），后端无类型保护 → 数字 147/512/450 变字符串 "1"/"512"/"450"，会破坏 main_cli 解析。
+  - 修复：前端按原始 JSON 类型收集（bool→checked，number→parseFloat，string→el.value）
+  - 修复：后端 `applyAppEdit` 类型保护——原值数字/布尔 + 新值字符串时尝试转换，非法值返回 `error:type_mismatch:<key>` 拒绝整次保存
+  - 验证：非法字符串 400 且文件不变；数字字符串转换保留类型；e2e 回归 ALL PASS
+- **诊断教训**：8081 端口曾残留多个旧进程（pkill -x 漏杀），测试脚本连到旧服务导致现象与代码不符。排查用 `ss -tlnp | grep 8081` + 反汇编确认二进制含新逻辑。
