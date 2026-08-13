@@ -1,6 +1,7 @@
 add_library(module_config
     config_impl.cpp
     mod_config.cpp
+    config_editor_module.cpp
 )
 target_include_directories(module_config
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}

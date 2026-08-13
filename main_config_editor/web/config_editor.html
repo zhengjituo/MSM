@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DAQ 配置编辑器</title>
+<style>
+:root { --bg:#1a1a2e; --panel:#16213e; --border:#0f3460; --accent:#00d4ff; --text:#e0e0e0; --muted:#8a8aa0; --warn:#f0a030; --err:#ff6b6b; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+h1 { color:var(--accent); font-size:20px; margin-bottom:16px; display:flex; align-items:center; gap:12px; }
+h1 .meta { font-size:12px; color:var(--muted); font-weight:normal; }
+.badge { padding:3px 12px; border-radius:12px; font-size:12px; font-weight:600; }
+.badge.run { background:#1f5a3a; color:#4ae0a0; }
+.badge.stop { background:#3a1f1f; color:#ff8a8a; }
+.tabs { display:flex; gap:6px; margin-bottom:14px; }
+.tab { padding:8px 22px; cursor:pointer; background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:6px 6px 0 0; font-size:14px; }
+.tab.active { background:var(--accent); color:#111; font-weight:600; }
+.panel { display:none; }
+.panel.active { display:block; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:14px; }
+.row { display:flex; gap:16px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+.row label { min-width:90px; color:var(--muted); font-size:13px; }
+select, input[type=text], input[type=number] { background:#0f3460; color:var(--text); border:1px solid #1a5a8a; border-radius:4px; padding:5px 8px; font-size:13px; }
+select:disabled, input:disabled { opacity:.5; }
+.note { color:var(--warn); font-size:12px; margin:6px 0; }
+.grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px 24px; }
+.fld { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.fld label { min-width:140px; font-size:12px; color:var(--muted); }
+.fld input, .fld select { width:170px; }
+.btn { padding:8px 18px; border:none; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:disabled { opacity:.4; cursor:default; }
+.btn-primary { background:var(--accent); color:#111; }
+.btn-danger { background:var(--err); color:#fff; }
+#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 22px; border-radius:6px; display:none; font-size:13px; z-index:99; }
+</style>
+</head>
+<body>
+<h1>⚙ DAQ 配置编辑器 <span id="lockBadge" class="badge stop">检测中…</span><span class="meta" id="metaInfo"></span></h1>
+
+<div class="tabs">
+  <div class="tab active" data-tab="dev">设备参数（板卡/通道）</div>
+  <div class="tab" data-tab="app">软件参数（app_config）</div>
+</div>
+
+<div id="devPanel" class="panel active">
+  <div class="card">
+    <div class="row">
+      <label>板卡</label><select id="selCard"></select>
+      <label>通道</label><select id="selChannel"></select>
+      <label><input type="checkbox" id="chkRunEnable"> 通道使能</label>
+    </div>
+    <div class="note">二次公式参数（K/K1st/Kx/Ky/OffsetX/OffsetY/B1st）每卡共用一组，仅通道 1 生效。</div>
+    <div class="grid" id="paramGrid"></div>
+  </div>
+  <div class="row">
+    <button class="btn btn-primary" id="btnSaveChannel">保存当前通道</button>
+    <button class="btn btn-primary" id="btnSaveCard">保存到当前板卡全部通道</button>
+    <button class="btn btn-primary" id="btnSaveChassis">保存到机箱全部1073通道</button>
+  </div>
+</div>
+
+<div id="appPanel" class="panel">
+  <div class="card">
+    <div class="note">软件参数保存到 app_config；ConfigVersion 由系统维护，只读。</div>
+    <div class="grid" id="appGrid"></div>
+  </div>
+  <button class="btn btn-primary" id="btnSaveApp">保存软件参数</button>
+</div>
+
+<div class="row" style="margin-top:18px">
+  <button class="btn btn-danger" id="btnExit">退出编辑器</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const META = { keys: [], enums: {}, cards: {}, version: '' };
+let cfg = null;
+let acquiring = false;
+
+const $ = id => document.getElementById(id);
+const toast = msg => { const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2500); };
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  let j = {};
+  try { j = await r.json(); } catch(e) {}
+  return { r, j };
+}
+
+async function loadMeta() {
+  const { j } = await fetchJSON('/api/meta');
+  Object.assign(META, j);
+  $('metaInfo').textContent = '配置版本 ' + META.version;
+}
+
+async function loadCfg() {
+  const { r, j } = await fetchJSON('/api/config');
+  if (!r.ok) { toast('加载配置失败'); return; }
+  cfg = j;
+  populateCards();
+  renderAppGrid();
+  refreshLock();
+}
+
+async function refreshLock() {
+  const { j } = await fetchJSON('/api/lock');
+  acquiring = !!j.acquiring;
+  const b = $('lockBadge');
+  b.textContent = acquiring ? '采集运行中' : '采集停止';
+  b.className = 'badge ' + (acquiring ? 'run' : 'stop');
+  ['btnSaveChannel','btnSaveCard','btnSaveChassis','btnSaveApp'].forEach(id => $(id).disabled = acquiring);
+}
+
+function currentCard() {
+  const name = $('selCard').value;
+  return (cfg.DaqParameter && cfg.DaqParameter.Cards && cfg.DaqParameter.Cards[name]) || null;
+}
+
+function populateCards() {
+  const cards = cfg.DaqParameter?.Cards || {};
+  const sel = $('selCard');
+  sel.innerHTML = '';
+  for (const name in cards) {
+    const c = cards[name];
+    const opt = document.createElement('option');
+    opt.value = name;
+    const label = META.cards[c.CardType] || c.CardType;
+    opt.textContent = `${name} [${label}] (Slot ${c.Slot})`;
+    sel.appendChild(opt);
+  }
+  sel.onchange = () => { populateChannels(); renderParams(); };
+  populateChannels();
+  renderParams();
+}
+
+function populateChannels() {
+  const card = currentCard();
+  const sel = $('selChannel');
+  sel.innerHTML = '';
+  const chs = card?.Channels || {};
+  for (const key in chs) {
+    if (!chs[key] || typeof chs[key] !== 'object') continue;
+    const opt = document.createElement('option');
+    opt.value = key;
+    const ch = chs[key];
+    const en = ch.runEnable ? '●' : '○';
+    opt.textContent = `${key} ${en}`;
+    sel.appendChild(opt);
+  }
+  sel.onchange = renderParams;
+  renderParams();
+}
+
+function currentChannel() {
+  const chs = currentCard()?.Channels || {};
+  const key = $('selChannel').value;
+  return key ? chs[key] : null;
+}
+
+function renderParams() {
+  const ch = currentChannel();
+  $('chkRunEnable').checked = !!ch?.runEnable;
+  const grid = $('paramGrid');
+  grid.innerHTML = '';
+  if (!ch) { grid.innerHTML = '<div class="note">无可编辑通道</div>'; return; }
+  // 已知可编辑键（去掉身份键）
+  for (const key of META.keys) {
+    if (key === 'cardIndex' || key === 'channel' || key === 'slot') continue;
+    if (ch[key] === undefined) continue;
+    grid.appendChild(field(key, ch[key]));
+  }
+}
+
+function field(key, value) {
+  const wrap = document.createElement('div');
+  wrap.className = 'fld';
+  const lb = document.createElement('label');
+  lb.textContent = key;
+  let input;
+  const opts = META.enums[key];
+  if (opts) {
+    input = document.createElement('select');
+    for (const o of opts) {
+      const op = document.createElement('option');
+      op.value = o; op.textContent = o;
+      input.appendChild(op);
+    }
+    input.value = String(value);
+  } else {
+    const numeric = typeof value === 'number' || /^-?\d+(\.\d+)?$/.test(String(value));
+    input = document.createElement('input');
+    input.type = numeric ? 'number' : 'text';
+    input.step = 'any';
+    input.value = String(value);
+  }
+  input.dataset.key = key;
+  wrap.appendChild(lb);
+  wrap.appendChild(input);
+  return wrap;
+}
+
+function collectParams() {
+  const params = {};
+  document.querySelectorAll('#paramGrid input[data-key], #paramGrid select[data-key]').forEach(el => {
+    params[el.dataset.key] = el.value;
+  });
+  params.runEnable = $('chkRunEnable').checked ? 'true' : 'false';
+  return params;
+}
+
+async function save(scope) {
+  if (acquiring) { toast('采集运行中，请先停止'); return; }
+  const card = currentCard();
+  const key = $('selChannel').value;
+  const channel = key ? parseInt(key.replace('Channel#',''), 10) : 0;
+  const body = { scope, cardIndex: card.CardIndex, channel, params: collectParams() };
+  const { r, j } = await fetchJSON('/api/config/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (r.status === 409) { toast('采集运行中，保存被拒绝'); refreshLock(); }
+  else if (j.status === 'ok') { toast('已保存'); loadCfg(); }
+  else toast('保存失败: ' + (j.status || r.status));
+}
+
+function renderAppGrid() {
+  const ac = cfg.app_config || {};
+  const grid = $('appGrid');
+  grid.innerHTML = '';
+  for (const key in ac) {
+    if (key === 'ConfigVersion') continue; // 只读，系统维护
+    const wrap = document.createElement('div');
+    wrap.className = 'fld';
+    const lb = document.createElement('label');
+    lb.textContent = key;
+    const val = ac[key];
+    let input;
+    const numeric = typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(String(val));
+    input = document.createElement('input');
+    if (typeof val === 'boolean') {
+      input.type = 'checkbox';
+      input.checked = val;
+      input.dataset.ischk = '1';
+    } else {
+      input.type = numeric ? 'number' : 'text';
+      input.step = 'any';
+      input.value = String(val);
+    }
+    input.dataset.key = key;
+    wrap.appendChild(lb);
+    wrap.appendChild(input);
+    grid.appendChild(wrap);
+  }
+}
+
+async function saveApp() {
+  if (acquiring) { toast('采集运行中，请先停止'); return; }
+  const ac = {};
+  document.querySelectorAll('#appGrid input[data-key]').forEach(el => {
+    if (el.dataset.ischk) ac[el.dataset.key] = el.checked;
+    else ac[el.dataset.key] = el.value;
+  });
+  const { r, j } = await fetchJSON('/api/config/save-app', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ app_config: ac }) });
+  if (r.status === 409) { toast('采集运行中，保存被拒绝'); refreshLock(); }
+  else if (j.status === 'ok') { toast('已保存'); loadCfg(); }
+  else toast('保存失败: ' + (j.status || r.status));
+}
+
+// tab 切换
+document.querySelectorAll('.tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    $((t.dataset.tab === 'dev' ? 'dev' : 'app') + 'Panel').classList.add('active');
+  };
+});
+
+$('btnSaveChannel').onclick = () => save('channel');
+$('btnSaveCard').onclick = () => save('card');
+$('btnSaveChassis').onclick = () => save('chassis');
+$('btnSaveApp').onclick = saveApp;
+$('btnExit').onclick = async () => { await fetch('/api/shutdown', { method:'POST' }).catch(()=>{}); setTimeout(()=>location.href='about:blank', 300); };
+
+loadMeta();
+loadCfg();
+setInterval(refreshLock, 2000);
+</script>
+</body>
+</html>
