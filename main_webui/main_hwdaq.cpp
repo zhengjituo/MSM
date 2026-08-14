@@ -22,6 +22,10 @@
 
 using nlohmann::json;
 
+#include "config_editor_module.h"
+#include "MessageBus.h"
+#include "Message.h"
+
 static std::atomic<bool> g_stop{false};
 
 static const char* IPC_PATH = "/tmp/msm_daq.sock";
@@ -307,6 +311,9 @@ struct AppSnapshot {
     bool editorAlive = false;
 };
 static AppSnapshot g_snap;
+static msm::ConfigEditorModule g_configEditor;
+static std::string g_runtimeCfgPath;
+static std::string g_initCfgPath;
 static std::mutex g_snapMtx;
 static std::condition_variable g_snapCv;
 static bool g_snapUpdated = false;
@@ -440,6 +447,34 @@ int main() {
     IPCClient ipc;
     // Try to connect in case backend was started externally
     ipc.connect(IPC_PATH);
+
+    // Config 编辑器（webui 进程内状态机）
+    {
+        char exe[1024];
+        ssize_t len = ::readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+        std::string base;
+        if (len > 0) {
+            exe[len] = 0;
+            std::string ep(exe);
+            size_t s = ep.rfind('/');
+            if (s != std::string::npos) base = ep.substr(0, s);
+        }
+        std::string cand = base + "/../../config/";
+        size_t pos;
+        while ((pos = cand.find("/../")) != std::string::npos) {
+            if (pos == 0) { cand.erase(0, 3); continue; }
+            size_t prev = cand.rfind('/', pos - 1);
+            if (prev == std::string::npos) prev = 0;
+            cand.erase(prev, pos + 3 - prev);
+        }
+        g_runtimeCfgPath = cand + "app_runtime_config.json";
+        g_initCfgPath = cand + "app_initial_config.json";
+        std::string err;
+        if (!g_configEditor.importConfig(g_runtimeCfgPath, &err))
+            std::cerr << "[webui] config editor init: " << err << "\n";
+        msm::MessageBus::instance().registerModule(&g_configEditor);
+        g_configEditor.start();
+    }
 
     bool saveEnabled = false;
     bool ipcWasConnected = ipc.isConnected();
