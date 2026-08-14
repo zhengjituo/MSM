@@ -7,9 +7,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/statvfs.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/poll.h>
 #include <cerrno>
 
 namespace msm {
@@ -113,22 +110,13 @@ ConfigEditorModule::~ConfigEditorModule() {
 }
 
 void ConfigEditorModule::registerVars() {
-    vars_.declare("acquiring", "bool",
-        [this]() { return acquiring_.load() ? "true" : "false"; });
 }
 
 void ConfigEditorModule::start() {
     msm::Module::start();
-    running_.store(true);
-    probeThread_ = std::thread([this] { probeLoop(); });
 }
 
 void ConfigEditorModule::stop() {
-    if (!running_.exchange(false)) {
-        msm::Module::stop();
-        return;
-    }
-    if (probeThread_.joinable()) probeThread_.join();
     msm::Module::stop();
 }
 
@@ -228,10 +216,6 @@ std::string ConfigEditorModule::getConfigJson() const {
     return cfg_.dump(4);
 }
 
-std::string ConfigEditorModule::getAcquiringJson() const {
-    return std::string("{\"acquiring\":") + (acquiring_.load() ? "true" : "false") + "}";
-}
-
 std::string ConfigEditorModule::currentVersion() const {
     std::lock_guard<std::mutex> lock(mtx_);
     int ver = cfg_.value("ConfigVersion", 1);
@@ -271,7 +255,6 @@ ordered_json* ConfigEditorModule::findCard(int cardIndex) {
 std::string ConfigEditorModule::applyEdit(const std::string& scope, int cardIndex, int channel,
                                           const std::map<std::string, std::string>& params) {
     std::lock_guard<std::mutex> lock(mtx_);
-    if (acquiring_.load()) return "locked";
 
     // 校验 params：键必须已知，枚举值必须合法，身份键禁止
     for (auto& [k, v] : params) {
@@ -345,7 +328,6 @@ std::string ConfigEditorModule::mergeAppConfig(ordered_json& app, ordered_json& 
 
 std::string ConfigEditorModule::applyAppEdit(const std::string& appJsonStr) {
     std::lock_guard<std::mutex> lock(mtx_);
-    if (acquiring_.load()) return "locked";
     ordered_json ac;
     try {
         ac = ordered_json::parse(appJsonStr);
@@ -361,7 +343,6 @@ std::string ConfigEditorModule::applyAppEdit(const std::string& appJsonStr) {
 std::string ConfigEditorModule::applyAppEditToFile(const std::string& appJsonStr,
                                                    const std::string& targetFile) {
     std::lock_guard<std::mutex> lock(mtx_);
-    if (acquiring_.load()) return "locked";
     ordered_json ac;
     try {
         ac = ordered_json::parse(appJsonStr);
@@ -402,12 +383,6 @@ void ConfigEditorModule::handleState(const msm::Message& msg) {
         resp.setCorrelationId(msg.getCorrelationId());
         resp.data.set("config_json", getConfigJson());
         msm::MessageBus::instance().send(resp);
-    } else if (msg.cmd == "GetLock") {
-        msm::Message resp("Response");
-        resp.setTarget(msg.getSender());
-        resp.setCorrelationId(msg.getCorrelationId());
-        resp.data.set("acquiring", acquiring_.load() ? "true" : "false");
-        msm::MessageBus::instance().send(resp);
     } else if (msg.cmd == "SaveChannel" || msg.cmd == "SaveCard" || msg.cmd == "SaveChassis") {
         std::string scope = msg.cmd == "SaveChannel" ? "channel"
                           : msg.cmd == "SaveCard" ? "card" : "chassis";
@@ -445,46 +420,6 @@ const std::map<std::string, std::vector<std::string>>& ConfigEditorModule::enumO
 }
 const std::map<std::string, std::string>& ConfigEditorModule::cardTypeLabels() {
     return cardTypeLabelsImpl();
-}
-
-// ── DAQ 门控 ────────────────────────────────────────────
-bool ConfigEditorModule::probeDaqRunning() {
-    int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return false;
-    struct sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    std::strncpy(addr.sun_path, "/tmp/msm_daq.sock", sizeof(addr.sun_path) - 1);
-    if (::connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        ::close(fd);
-        return false;
-    }
-    const char* req = "MSG Status >> -@ DAQModule\n";
-    ::send(fd, req, std::strlen(req), MSG_NOSIGNAL);
-    struct pollfd pfd{fd, POLLIN, 0};
-    int n = ::poll(&pfd, 1, 1500);
-    bool running = false;
-    if (n > 0 && (pfd.revents & POLLIN)) {
-        char buf[2048];
-        int r = ::recv(fd, buf, sizeof(buf) - 1, 0);
-        if (r > 0) {
-            buf[r] = 0;
-            std::string resp(buf);
-            // 状态响应中是否包含 running 状态
-            if (resp.find("\"running\":true") != std::string::npos ||
-                resp.find("running=true") != std::string::npos ||
-                resp.find("running:true") != std::string::npos)
-                running = true;
-        }
-    }
-    ::close(fd);
-    return running;
-}
-
-void ConfigEditorModule::probeLoop() {
-    while (running_.load()) {
-        acquiring_.store(probeDaqRunning());
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-    }
 }
 
 } // namespace msm

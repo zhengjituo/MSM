@@ -23,8 +23,6 @@ namespace msm {
 //   - 版本：ConfigVersion 字段（当前=1，旧文件无键 → 视为 v1），增量补默认
 //   - 保存语义：channel / card / chassis 三种 scope；身份键不覆盖；
 //     params 键必须属于已知可编辑键集合，否则拒绝
-//   - 门控：内部 ~2s 探测 DAQ IPC（MSG Status >> -@ DAQModule），
-//     解析 running → acquiring_；采集中保存返回 locked；无 socket 视为未运行
 class ConfigEditorModule : public msm::Module {
 public:
     explicit ConfigEditorModule();
@@ -42,8 +40,6 @@ public:
 
     // ── 查询 ──
     std::string getConfigJson() const;   // 内存配置（ordered_json dump）
-    std::string getAcquiringJson() const;
-    bool isAcquiring() const { return acquiring_.load(); }
     std::string currentVersion() const;  // "v1" 等
     const std::string& loadedPath() const { return loadedPath_; }
 
@@ -75,10 +71,6 @@ private:
     bool saveToFileAtomic(const std::string& path, const std::string& content);
     bool migrateIfNeeded();   // 版本迁移 + .bak 备份
 
-    // DAQ 门控
-    void probeLoop();
-    bool probeDaqRunning();
-
     // 编辑定位
     nlohmann::ordered_json* findCard(int cardIndex);
     nlohmann::ordered_json& configJson();   // 顶层
@@ -90,9 +82,6 @@ private:
 
     std::string loadedPath_;
     nlohmann::ordered_json cfg_;           // 内存中持有完整配置
-    std::atomic<bool> acquiring_{false};
-    std::atomic<bool> running_{false};
-    std::thread probeThread_;
     mutable std::mutex mtx_;
 };
 
