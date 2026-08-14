@@ -50,3 +50,9 @@
 
 ## 日志
 - 2026-08-13 阶段 A 完结（commit 7a0a723），开始阶段 B 合并
+
+## 结束 commit
+```
+cd44050  merge: config editor operates app_runtime_config.json; reload loads from runtime; optional save to initial config (saveToInit)
+```
+T1~T6 完成。T7 阶段 C（webui 入口按钮 + 磁盘空间安全 P0-B）待后续。
