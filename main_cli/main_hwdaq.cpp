@@ -216,13 +216,7 @@ int main() {
                     }
                     if (line == "reload") {
                         std::cout << "[main] Reloading from runtime config...\n";
-                        send("Stop >> -@ DAQModule");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                        send("Stop >> -@ Process");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                        send("Stop >> -@ Storage");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                        // 从 runtime 加载（编辑器改 runtime 后 reload 生效）
+                        // 剥离 Stop：reload 仅空闲时由前端门控调用；此处直接加载
                         if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
                             std::cerr << "[main] Reload failed: cannot load " << g_runtimeConfigPath << "\n";
                         } else {
@@ -248,12 +242,7 @@ int main() {
     while (!g_stop.load()) {
         if (g_reload.exchange(false)) {
             std::cout << "[main] Reloading (via IPC) from runtime config...\n";
-            send("Stop >> -@ DAQModule");
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            send("Stop >> -@ Process");
-            send("Stop >> -@ Storage");
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            // 从 runtime 加载（编辑器改 runtime 后 reload 生效）
+            // 剥离 Stop：reload 仅空闲时由前端门控调用；此处直接加载
             if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
                 std::cerr << "[main] Reload failed: cannot load " << g_runtimeConfigPath << "\n";
             } else {
