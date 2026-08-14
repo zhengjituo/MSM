@@ -72,6 +72,12 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <button class="btn btn-start" id="btnStart" onclick="doStart()" disabled>▶ Start</button>
   <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>■ Stop</button>
   <button class="btn btn-reload" id="btnReload" onclick="doReload()" disabled>↻ Reload</button>
+  <button class="btn btn-warn btn-sm" id="btnConfig" onclick="doConfig()" disabled>⚙ Config</button>
+  <button class="btn btn-default btn-sm" id="btnConfigClose" onclick="doConfigClose()" disabled>✕ Close</button>
+  <span class="backend-indicator" id="editorIndicator" style="display:none">
+    <span id="indEditor" class="indicator off"></span>
+    <span id="editorStatusText">stopped</span>
+  </span>
 </div>
 
 <h2>Frame Summary</h2>
@@ -201,6 +207,15 @@ function render(d) {
   document.getElementById('btnStop').disabled = !backendRunning || !d.running;
   document.getElementById('btnReload').disabled = !backendRunning;
 
+  // Config editor: entry only when DAQ is NOT acquiring and backend alive
+  const editorAlive = !!d.editor_alive;
+  document.getElementById('btnConfig').disabled = !backendRunning || d.running || editorAlive;
+  document.getElementById('btnConfigClose').disabled = !editorAlive;
+  const editorInd = document.getElementById('editorIndicator');
+  editorInd.style.display = editorAlive ? 'inline-flex' : 'none';
+  document.getElementById('indEditor').className = 'indicator ' + (editorAlive ? 'on' : 'off');
+  document.getElementById('editorStatusText').textContent = editorAlive ? 'running' : 'stopped';
+
   document.getElementById('saveCheck').checked = d.save_enabled;
 
   // Channel summary
@@ -283,6 +298,19 @@ function doQuitBackend() {
 function doStart() { post('/api/msg', 'start'); }
 function doStop() { post('/api/msg', 'stop'); }
 function doReload() { post('/api/msg', 'reload'); }
+
+async function doConfig() {
+  const j = await post('/api/config', '');
+  if (j.status === 'ready' || j.status === 'already running') {
+    toast('opening config editor...');
+    window.open('http://localhost:8081', '_blank');
+  }
+}
+
+async function doConfigClose() {
+  const j = await post('/api/config/close', '');
+  if (j.status === 'closed') toast('config editor closed');
+}
 
 function toggleSave() {
   const cb = document.getElementById('saveCheck');

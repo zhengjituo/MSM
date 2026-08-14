@@ -21,12 +21,21 @@ f256631  task 015: close merge Phase B (reload from runtime + saveToInit)
 ## TODO
 - [x] T1 调研 main_webui 结构（按钮位置、进程拉起机制、状态指标）
 - [x] T2 调研 module_storage 写入循环与 flush 时序，确定磁盘检查注入点
-- [ ] T3 方案：webui config 入口（含交互/门控/失败处理）
+- [x] T3 方案：webui config 入口（含交互/门控/失败处理，2026-08-14 用户确认）
 - [x] T4 方案：磁盘空间安全停止序列（2026-08-14 用户确认先做 T4）
-- [ ] T5 实现 webui config 入口
+- [x] T5 实现 webui config 入口
 - [x] T6 实现磁盘安全（P0-B）
 - [x] T7 编译验证（msm_cli_simsrc/msm_cli_hwdaq/msm_webui/msm_config_editor 全过）
 - [x] T8 集成验证 + 提交
+
+## 集成验证（T3 webui config 入口）
+- `/api/run sim` 后端 ready ✓
+- `/api/config` 拉起 `msm_config_editor`，8081 `/api/meta` 200 ✓
+- `editor_alive` 状态经 poll 快照正确上报（launch 后 True，close 后 False）✓
+- `/api/config/close` 优雅关闭（`[config-editor] shutdown` 日志确认）✓
+- webui 退出自动回收编辑器进程 ✓
+- 前端页面含 Config 按钮/门控/editor_alive marker 渲染正常 ✓
+- 全 target 构建通过 ✓
 
 ## 集成验证（T4 磁盘安全）
 - 紧急路径（临时调阈值 4000000MB 模拟磁盘不足）：
@@ -44,6 +53,8 @@ f256631  task 015: close merge Phase B (reload from runtime + saveToInit)
 - 2026-08-14 T1/T2 调研完成；T4 方案确认，先实现磁盘安全（P0-B）
 - 2026-08-14 T4 实现完成：statvfs 检查（onStart + onIdle 主循环）+ 紧急停止序列 +
   fsync 持久化 + status/变量表上报；编译+集成验证通过
+- 2026-08-14 T3/T5 实现完成：webui Config 入口（后端拉起/关闭 msm_config_editor +
+  2 端点 + editor 状态上报；前端 Config/Close 按钮 + 门控）。阶段 C 全部完成
 
 ## 设计决议（T4 磁盘安全，2026-08-14）
 - 范围：仅 `module_storage` 内部增强，不改跨模块接口/配置格式
@@ -54,6 +65,17 @@ f256631  task 015: close merge Phase B (reload from runtime + saveToInit)
 - `onStart` 同样检查磁盘，不足则不开启 recording（只丢弃）
 - `rotateFile`/`closeFiles`：`fclose` 前加 `fflush`+`fsync(fileno)`，防掉电 rename 成不完整文件
 - `onStatus`/变量表上报 `disk_free_mb`、`disk_emergency`
+
+## 设计决议（T3 webui config 入口，2026-08-14 用户确认）
+- 范围：仅 `main_webui`（后端 + 前端 HTML），不改跨模块 Message/配置格式
+- 后端：复用 `launchBackend` 的 fork+`findCliPath` 模式拉起 `msm_config_editor`（监听 8081）
+  - 新端点 `POST /api/config`：启动编辑器进程（已跑则返回状态）；`POST /api/config/close`：向 8081 发 `/api/shutdown`
+  - 编辑器进程 pid/状态独立于后端（`pidEditor_`），随 webui 退出时回收
+- 门控双保险：
+  1. 前端按钮 `disabled = d.running || !backendRunning`
+  2. 编辑器侧 lock（`config_editor_module` 经 DAQ socket running → acquiring_，采集中 save 返回 409）
+- 前端：toolbar 加 `⚙ Config` 按钮 + 状态指示；点击 → POST /api/config → `window.open('http://localhost:8081')`
+- 失败处理：fork 失败/不可达 → toast 报错
 
 ## 日志
 - 2026-08-14 创建 task，进入阶段 C

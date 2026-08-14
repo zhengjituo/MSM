@@ -133,6 +133,90 @@ static void checkChild() {
     }
 }
 
+// ── Config editor process management ─────────────────────────────
+// 独立于 DAQ 后端的编辑器进程（msm_config_editor，监听 8081）
+
+static pid_t g_editorPid = -1;
+static bool g_editorAlive = false;
+
+static std::string findConfigEditorPath() {
+    const char* envDir = ::getenv("MSM_CLI_PATH");
+    if (envDir && envDir[0]) {
+        std::string p = std::string(envDir) + "/msm_config_editor";
+        if (::access(p.c_str(), X_OK) == 0) return p;
+    }
+    char exe[1024];
+    ssize_t len = ::readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (len > 0) {
+        exe[len] = 0;
+        std::string ep(exe);
+        size_t s = ep.rfind('/');
+        if (s != std::string::npos) {
+            // ../../main_config_editor/build/msm_config_editor
+            std::string candidate = ep.substr(0, s) + "/../../main_config_editor/build/msm_config_editor";
+            size_t pos;
+            while ((pos = candidate.find("/../")) != std::string::npos) {
+                if (pos == 0) { candidate.erase(0, 3); continue; }
+                size_t prev = candidate.rfind('/', pos - 1);
+                if (prev == std::string::npos) prev = 0;
+                candidate.erase(prev, pos + 3 - prev);
+            }
+            if (::access(candidate.c_str(), X_OK) == 0) return candidate;
+        }
+    }
+    return "msm_config_editor";
+}
+
+static bool launchConfigEditor() {
+    if (g_editorPid > 0) {
+        int st = 0;
+        if (::waitpid(g_editorPid, &st, WNOHANG) == 0) return false; // already running
+    }
+    std::string path = findConfigEditorPath();
+    pid_t pid = ::fork();
+    if (pid < 0) return false;
+    if (pid == 0) {
+        ::setsid();
+        ::execlp(path.c_str(), path.c_str(), nullptr);
+        ::_exit(127);
+    }
+    g_editorPid = pid;
+    g_editorAlive = true;
+    return true;
+}
+
+static void stopConfigEditor() {
+    if (g_editorPid <= 0) return;
+    // 优雅退出：请求编辑器 /api/shutdown
+    try {
+        httplib::Client cli("http://localhost:8081");
+        cli.Post("/api/shutdown");
+    } catch (...) {}
+    const int kGraceMs = 3000;
+    for (int waited = 0; waited < kGraceMs; waited += 100) {
+        int st = 0;
+        if (::waitpid(g_editorPid, &st, WNOHANG) == g_editorPid) {
+            g_editorPid = -1;
+            g_editorAlive = false;
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    ::kill(g_editorPid, SIGKILL);
+    ::waitpid(g_editorPid, nullptr, 0);
+    g_editorPid = -1;
+    g_editorAlive = false;
+}
+
+static void checkEditorChild() {
+    if (g_editorPid <= 0) return;
+    int st = 0;
+    if (::waitpid(g_editorPid, &st, WNOHANG) == g_editorPid) {
+        g_editorPid = -1;
+        g_editorAlive = false;
+    }
+}
+
 // ── IPC 客户端 ──────────────────────────────────────────────────
 
 class IPCClient {
@@ -219,6 +303,8 @@ struct AppSnapshot {
     std::string backendMode;
     int backendPid = 0;
     std::string backendStatusStr;
+    // Config editor fields
+    bool editorAlive = false;
 };
 static AppSnapshot g_snap;
 static std::mutex g_snapMtx;
@@ -292,6 +378,7 @@ static AppSnapshot parseSnapshot(json& daqJ, json& procJ, json& storJ, bool save
             case BS_CRASHED:  snap.backendStatusStr = "crashed"; break;
         }
     }
+    snap.editorAlive = g_editorPid > 0 && g_editorAlive;
     return snap;
 }
 
@@ -307,6 +394,7 @@ static std::string buildSseData(const AppSnapshot& snap) {
     o << ",\"backend_pid\":" << snap.backendPid;
     o << ",\"backend_mode\":\"" << snap.backendMode << "\"";
     o << ",\"backend_status\":\"" << snap.backendStatusStr << "\"";
+    o << ",\"editor_alive\":" << (snap.editorAlive ? "true" : "false");
     o << ",\"channels\":[";
     for (int i = 0; i < snap.channels; i++) {
         if (i > 0) o << ",";
@@ -450,6 +538,40 @@ int main() {
         res.set_content(R"({"status":"stopped"})", "application/json");
     });
 
+    // ── Config editor 入口 ──
+    svr.Post("/api/config", [&](const httplib::Request&, httplib::Response& res) {
+        if (g_editorPid > 0) {
+            int st = 0;
+            if (::waitpid(g_editorPid, &st, WNOHANG) == 0) {
+                res.set_content(R"({"status":"already running"})", "application/json");
+                return;
+            }
+        }
+        if (!launchConfigEditor()) {
+            res.set_content(R"({"status":"launch failed"})", "application/json");
+            return;
+        }
+        // 等编辑器 8081 就绪
+        bool ok = false;
+        for (int i = 0; i < 20; i++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            try {
+                httplib::Client cli("http://localhost:8081");
+                auto r = cli.Get("/api/meta");
+                if (r && r->status == 200) { ok = true; break; }
+            } catch (...) {}
+            checkEditorChild();
+            if (g_editorPid <= 0) break;
+        }
+        res.set_content(ok ? R"({"status":"ready"})"
+                           : R"({"status":"editor not ready"})", "application/json");
+    });
+
+    svr.Post("/api/config/close", [&](const httplib::Request&, httplib::Response& res) {
+        stopConfigEditor();
+        res.set_content(R"({"status":"closed"})", "application/json");
+    });
+
     svr.Get("/api/events", [&](const httplib::Request&, httplib::Response& res) {
         res.set_chunked_content_provider("text/event-stream",
             [&](size_t, httplib::DataSink& sink) {
@@ -518,6 +640,7 @@ int main() {
     // Poll loop
     while (!g_stop.load()) {
         checkChild();
+        checkEditorChild();
         json daqJ, procJ, storJ;
 
         std::string dr = ipc.send("MSG Status >> -@ DAQModule");
@@ -545,6 +668,7 @@ int main() {
 
     ipc.close();
     stopBackend();
+    stopConfigEditor();
     svr.stop();
     if (httpThread.joinable()) httpThread.join();
     std::cout << "[webui] shutdown\n";
