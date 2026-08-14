@@ -72,12 +72,7 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <button class="btn btn-start" id="btnStart" onclick="doStart()" disabled>▶ Start</button>
   <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>■ Stop</button>
   <button class="btn btn-reload" id="btnReload" onclick="doReload()" disabled>↻ Reload</button>
-  <button class="btn btn-warn btn-sm" id="btnConfig" onclick="doConfig()" disabled>⚙ Config</button>
-  <button class="btn btn-default btn-sm" id="btnConfigClose" onclick="doConfigClose()" disabled>✕ Close</button>
-  <span class="backend-indicator" id="editorIndicator" style="display:none">
-    <span id="indEditor" class="indicator off"></span>
-    <span id="editorStatusText">stopped</span>
-  </span>
+  <button class="btn btn-default btn-sm" id="btnConfigPanel" onclick="toggleCfgPanel(true)">Config</button>
 </div>
 
 <h2>Frame Summary</h2>
@@ -113,6 +108,32 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <span id="statusText">connecting...</span>
   <span id="chCount"></span>
   <span id="updateTime"></span>
+</div>
+<div class="panel" id="configPanel" style="display:none; border:1px solid #0f3460; border-radius:8px; padding:14px; margin-top:12px;">
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+    <span style="font-weight:600;">Config</span>
+    <span id="cfgVersion" style="color:#a0a0b0; font-size:12px;"></span>
+    <button class="btn btn-primary btn-sm" id="btnCfgSave" onclick="doCfgSave()">保存</button>
+    <button class="btn btn-warn btn-sm" id="btnCfgReload" onclick="doCfgReload()">Reload</button>
+    <button class="btn btn-default btn-sm" onclick="toggleCfgPanel(false)">关闭</button>
+  </div>
+  <div id="cfgBody" style="display:grid; grid-template-columns:220px 1fr; gap:12px;">
+    <div>
+      <select id="cfgSelCard" class="cfg-sel" onchange="cfgPopulateChannels()" style="width:100%; background:#16213e; color:#e0e0e0; border:1px solid #0f3460; border-radius:4px; padding:4px 8px; font-size:13px;"></select>
+      <select id="cfgSelChannel" class="cfg-sel" onchange="cfgRenderParams()" style="width:100%; margin-top:6px; background:#16213e; color:#e0e0e0; border:1px solid #0f3460; border-radius:4px; padding:4px 8px; font-size:13px;"></select>
+      <label style="display:flex; gap:6px; align-items:center; margin-top:8px; font-size:13px;">
+        <input type="checkbox" id="cfgRunEnable"> runEnable
+      </label>
+    </div>
+    <div id="cfgParamGrid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:6px; max-height:340px; overflow:auto;"></div>
+  </div>
+  <div id="cfgApp" style="margin-top:10px; border-top:1px solid #0f3460; padding-top:8px;">
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+      <span style="font-weight:600; font-size:12px; color:#a0a0b0;">app_config</span>
+      <label style="font-size:12px; display:flex; gap:4px; color:#a0a0b0;"><input type="checkbox" id="cfgSaveToInit"> 同时写入启动配置</label>
+    </div>
+    <div id="cfgAppGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; max-height:200px; overflow:auto;"></div>
+  </div>
 </div>
 <div id="toast"></div>
 
@@ -207,14 +228,8 @@ function render(d) {
   document.getElementById('btnStop').disabled = !backendRunning || !d.running;
   document.getElementById('btnReload').disabled = !backendRunning;
 
-  // Config editor: entry only when DAQ is NOT acquiring and backend alive
-  const editorAlive = !!d.editor_alive;
-  document.getElementById('btnConfig').disabled = !backendRunning || d.running || editorAlive;
-  document.getElementById('btnConfigClose').disabled = !editorAlive;
-  const editorInd = document.getElementById('editorIndicator');
-  editorInd.style.display = editorAlive ? 'inline-flex' : 'none';
-  document.getElementById('indEditor').className = 'indicator ' + (editorAlive ? 'on' : 'off');
-  document.getElementById('editorStatusText').textContent = editorAlive ? 'running' : 'stopped';
+  const rld = document.getElementById('btnCfgReload');
+  if (rld) rld.disabled = !backendRunning || d.running;
 
   document.getElementById('saveCheck').checked = d.save_enabled;
 
@@ -299,17 +314,181 @@ function doStart() { post('/api/msg', 'start'); }
 function doStop() { post('/api/msg', 'stop'); }
 function doReload() { post('/api/msg', 'reload'); }
 
-async function doConfig() {
-  const j = await post('/api/config', '');
-  if (j.status === 'ready' || j.status === 'already running') {
-    toast('opening config editor...');
-    window.open('http://localhost:8081', '_blank');
+let CFG_META = { keys: [], enums: {}, cards: {}, version: '', runtimeFile: '', initFile: '' };
+let CFG = null;
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  let j = {};
+  try { j = await r.json(); } catch(e) {}
+  return { r, j };
+}
+
+async function cfgLoadMeta() {
+  const { j } = await fetchJSON('/api/config/meta');
+  CFG_META = Object.assign(CFG_META, j);
+  document.getElementById('cfgVersion').textContent = '版本 ' + CFG_META.version;
+}
+
+async function cfgLoad() {
+  const { r, j } = await fetchJSON('/api/config');
+  if (!r.ok) { toast('配置加载失败'); return; }
+  CFG = j;
+  cfgPopulateCards();
+  cfgRenderApp();
+}
+
+function toggleCfgPanel(show) {
+  const p = document.getElementById('configPanel');
+  p.style.display = show ? 'block' : 'none';
+  if (show && !CFG) { cfgLoadMeta().then(() => cfgLoad()); }
+}
+
+function cfgCurrentCard() {
+  const name = document.getElementById('cfgSelCard').value;
+  return (CFG && CFG.DaqParameter && CFG.DaqParameter.Cards && CFG.DaqParameter.Cards[name]) || null;
+}
+
+function cfgPopulateCards() {
+  const cards = (CFG && CFG.DaqParameter && CFG.DaqParameter.Cards) || {};
+  const sel = document.getElementById('cfgSelCard');
+  sel.innerHTML = '';
+  for (const name in cards) {
+    const c = cards[name];
+    const label = (CFG_META.cards && CFG_META.cards[c.CardType]) || c.CardType;
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name + ' [' + label + '] (Slot ' + c.Slot + ')';
+    sel.appendChild(opt);
+  }
+  cfgPopulateChannels();
+}
+
+function cfgPopulateChannels() {
+  const card = cfgCurrentCard();
+  const sel = document.getElementById('cfgSelChannel');
+  sel.innerHTML = '';
+  const chs = (card && card.Channels) || {};
+  for (const key in chs) {
+    if (!chs[key] || typeof chs[key] !== 'object') continue;
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = key + (chs[key].runEnable ? ' ●' : ' ○');
+    sel.appendChild(opt);
+  }
+  cfgRenderParams();
+}
+
+function cfgCurrentChannel() {
+  const chs = (cfgCurrentCard() || {}).Channels || {};
+  const key = document.getElementById('cfgSelChannel').value;
+  return key ? chs[key] : null;
+}
+
+function cfgRenderParams() {
+  const ch = cfgCurrentChannel();
+  const grid = document.getElementById('cfgParamGrid');
+  grid.innerHTML = '';
+  document.getElementById('cfgRunEnable').checked = !!ch && !!ch.runEnable;
+  if (!ch) { grid.innerHTML = '<div style="color:#a0a0b0">无可编辑通道</div>'; return; }
+  for (const key of CFG_META.keys) {
+    if (key === 'cardIndex' || key === 'channel' || key === 'slot' || key === 'runEnable') continue;
+    if (ch[key] === undefined) continue;
+    grid.appendChild(cfgField(key, ch[key]));
   }
 }
 
-async function doConfigClose() {
-  const j = await post('/api/config/close', '');
-  if (j.status === 'closed') toast('config editor closed');
+function cfgField(key, value) {
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.gap = '2px';
+  const lb = document.createElement('label');
+  lb.textContent = key;
+  lb.style.fontSize = '11px';
+  lb.style.color = '#a0a0b0';
+  let input;
+  const opts = CFG_META.enums && CFG_META.enums[key];
+  if (opts) {
+    input = document.createElement('select');
+    for (const o of opts) {
+      const op = document.createElement('option');
+      op.value = o; op.textContent = o;
+      input.appendChild(op);
+    }
+    input.value = String(value);
+  } else {
+    const numeric = typeof value === 'number' || /^-?\d+(\.\d+)?$/.test(String(value));
+    input = document.createElement('input');
+    input.type = numeric ? 'number' : 'text';
+    input.step = 'any';
+    input.value = String(value);
+  }
+  input.dataset.key = key;
+  input.style.width = '100%';
+  input.style.background = '#16213e';
+  input.style.color = '#e0e0e0';
+  input.style.border = '1px solid #0f3460';
+  input.style.borderRadius = '4px';
+  input.style.padding = '3px 6px';
+  input.style.fontSize = '12px';
+  wrap.appendChild(lb);
+  wrap.appendChild(input);
+  return wrap;
+}
+
+function cfgRenderApp() {
+  const grid = document.getElementById('cfgAppGrid');
+  grid.innerHTML = '';
+  const app = (CFG && CFG.app_config) || {};
+  for (const k in app) {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.gap = '2px';
+    const lb = document.createElement('label');
+    lb.textContent = k;
+    lb.style.fontSize = '11px';
+    lb.style.color = '#a0a0b0';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = String(app[k]);
+    input.dataset.key = k;
+    input.style.width = '100%';
+    input.style.background = '#16213e';
+    input.style.color = '#e0e0e0';
+    input.style.border = '1px solid #0f3460';
+    input.style.borderRadius = '4px';
+    input.style.padding = '3px 6px';
+    input.style.fontSize = '12px';
+    wrap.appendChild(lb);
+    wrap.appendChild(input);
+    grid.appendChild(wrap);
+  }
+}
+
+function cfgCollectParams() {
+  const params = {};
+  document.querySelectorAll('#cfgParamGrid input[data-key], #cfgParamGrid select[data-key]').forEach(el => {
+    params[el.dataset.key] = el.value;
+  });
+  params.runEnable = document.getElementById('cfgRunEnable').checked ? 'true' : 'false';
+  return params;
+}
+
+async function doCfgSave() {
+  const card = cfgCurrentCard();
+  const key = document.getElementById('cfgSelChannel').value;
+  const channel = key ? parseInt(key.replace('Channel#', ''), 10) : 0;
+  const body = { scope: 'channel', cardIndex: card.CardIndex, channel, params: cfgCollectParams() };
+  const { r, j } = await fetchJSON('/api/config/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (j.status === 'ok') { toast('已保存，reload 后生效'); cfgLoad(); }
+  else toast('保存失败: ' + (j.status || r.status));
+}
+
+async function doCfgReload() {
+  const { j } = await fetchJSON('/api/config/reload', { method: 'POST' });
+  toast('reload: ' + (j.status || 'ok'));
 }
 
 function toggleSave() {
