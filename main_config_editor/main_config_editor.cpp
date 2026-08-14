@@ -49,6 +49,30 @@ static std::string dirName(const std::string& path) {
     return s == std::string::npos ? "." : path.substr(0, s);
 }
 
+// 基于 exe 路径定位 web 页面（main_config_editor/build/msm_config_editor → ../web/config_editor.html）
+static std::string resolveWebPath() {
+    char exe[1024];
+    ssize_t len = ::readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    std::string base;
+    if (len > 0) {
+        exe[len] = 0;
+        std::string ep(exe);
+        size_t s = ep.rfind('/');
+        if (s != std::string::npos) base = ep.substr(0, s);
+    }
+    std::string candidate = base + "/../web/config_editor.html";
+    size_t pos;
+    while ((pos = candidate.find("/../")) != std::string::npos) {
+        if (pos == 0) { candidate.erase(0, 3); continue; }
+        size_t prev = candidate.rfind('/', pos - 1);
+        if (prev == std::string::npos) prev = 0;
+        candidate.erase(prev, pos + 3 - prev);
+    }
+    if (::access(candidate.c_str(), R_OK) == 0) return candidate;
+    std::string fallback = "config_editor.html";
+    return fallback;
+}
+
 int main(int argc, char** argv) {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, [](int) { g_stop.store(true); });
@@ -81,9 +105,9 @@ int main(int argc, char** argv) {
     httplib::Server svr;
 
     // ── 页面 ──
-    svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
-        std::ifstream f("main_config_editor/web/config_editor.html");
-        if (!f.is_open()) f.open("config_editor.html");
+    std::string webPath = resolveWebPath();
+    svr.Get("/", [webPath](const httplib::Request&, httplib::Response& res) {
+        std::ifstream f(webPath);
         if (!f.is_open()) { res.status = 404; res.set_content("config_editor.html not found", "text/plain"); return; }
         std::ostringstream oss; oss << f.rdbuf();
         res.set_content(oss.str(), "text/html");
