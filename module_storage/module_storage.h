@@ -38,6 +38,10 @@ private:
     void closeFiles();
     void rotateFile(int ch);
 
+    bool checkDiskFree() const;
+    uint64_t freeDiskMB() const;
+    void triggerDiskEmergency();
+
     std::string buildDirPath() const;
     std::string buildTempPath(int ch, int seq) const;
     std::string buildFinalPath(int ch, int seq, uint64_t firstB,
@@ -81,6 +85,8 @@ private:
     std::atomic<bool> flushing_{false};
     bool flushHadData_ = false;
     std::atomic<bool> saveEnabled_{false};
+    std::atomic<bool> diskEmergency_{false};
+    static constexpr uint64_t kMinFreeMB = 1024;
     std::mutex fileMtx_;
     std::vector<uint8_t> readBuf_;
 };

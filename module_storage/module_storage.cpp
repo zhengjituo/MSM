@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <cstring>
 #include <cerrno>
 #include <ctime>
@@ -12,6 +13,14 @@
 static inline uint32_t readU32BE(const uint8_t* p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
            ((uint32_t)p[2] << 8)  | (uint32_t)p[3];
+}
+
+static void syncAndClose(FILE* fp) {
+    if (!fp) return;
+    fflush(fp);
+    if (fsync(fileno(fp)) != 0)
+        std::cerr << "[Storage] fsync failed: " << strerror(errno) << "\n";
+    fclose(fp);
 }
 
 ModuleStorage::ModuleStorage(UserCircularBuffer* saveRing,
@@ -180,6 +189,31 @@ void ModuleStorage::onIdle() {
         return;
     }
 
+    // 磁盘安全检查：每批写入前检查剩余空间，不足则触发紧急停止
+    if (!diskEmergency_.load() && !checkDiskFree())
+        triggerDiskEmergency();
+
+    if (diskEmergency_.load()) {
+        // 磁盘满：停止写入，排空 ring（丢弃），fsync 收尾关闭文件
+        size_t toDiscard = saveRing_->availableDataSize();
+        if (toDiscard > 0) {
+            if (readBuf_.size() < toDiscard)
+                readBuf_.resize(toDiscard);
+            saveRing_->readData(readBuf_.data(), toDiscard);
+            int64_t disc = (int64_t)(toDiscard / (size_t)nCh_) / (int64_t)frameSize_;
+            for (int i = 0; i < nCh_; i++)
+                files_[i].framesConsumed.fetch_add(disc);
+            std::cout << "[Storage] DISK EMERGENCY: discarded " << disc
+                      << " frames/ch\n";
+        }
+        {
+            std::lock_guard<std::mutex> lock(fileMtx_);
+            closeFiles();
+        }
+        recording_ = false;
+        return;
+    }
+
     while (saveRing_->availableDataSize() >= totalNeeded) {
         if (readBuf_.size() < totalNeeded)
             readBuf_.resize(totalNeeded);
@@ -259,6 +293,13 @@ void ModuleStorage::onStart() {
         files_[i].bytesWritten = 0;
     }
     if (saveEnabled_.load() && nCh_ > 0) {
+        if (!checkDiskFree()) {
+            triggerDiskEmergency();
+            std::cout << "[Storage] Started, save DISABLED (disk below "
+                      << kMinFreeMB << " MB free threshold)\n";
+            return;
+        }
+        diskEmergency_.store(false);
         std::lock_guard<std::mutex> lock(fileMtx_);
         std::string dir = buildDirPath();
         ensureDir(dir);
@@ -296,6 +337,8 @@ void ModuleStorage::onStop() {
 void ModuleStorage::onStatus(msm::Message& response) {
     response.data.set("recording", recording_.load() ? "true" : "false");
     response.data.set("session", std::to_string(sessionId_));
+    response.data.set("disk_free_mb", std::to_string(freeDiskMB()));
+    response.data.set("disk_emergency", diskEmergency_.load() ? "true" : "false");
     for (int i = 0; i < nCh_; i++) {
         response.data.set("ch" + std::to_string(i + 1) + "_saved_frames",
                           std::to_string(files_[i].framesConsumed.load()));
@@ -308,7 +351,7 @@ void ModuleStorage::closeFiles() {
     for (int i = 0; i < MAX_CH; i++) {
         auto& f = files_[i];
         if (!f.fp) continue;
-        fclose(f.fp);
+        syncAndClose(f.fp);
         f.fp = nullptr;
         int ch = i;
         if (f.framesConsumed.load() > 0) {
@@ -335,7 +378,7 @@ void ModuleStorage::rotateFile(int ch) {
     if (ch < 0 || ch >= MAX_CH) return;
     auto& f = files_[ch];
     if (!f.fp) return;
-    fclose(f.fp);
+    syncAndClose(f.fp);
     f.fp = nullptr;
     std::string tmpPath = buildTempPath(ch, f.sequence);
     std::string finalPath = buildFinalPath(ch, f.sequence,
@@ -419,9 +462,39 @@ uint64_t ModuleStorage::parseBunchID(const uint8_t* frame, size_t flen) const {
          | ((uint64_t)trailer[6] << 8)  | trailer[7];
 }
 
+uint64_t ModuleStorage::freeDiskMB() const {
+    struct statvfs st;
+    if (statvfs(savePath_.c_str(), &st) != 0)
+        return 0;
+    uint64_t frsize = (st.f_frsize > 0) ? st.f_frsize : st.f_bsize;
+    return ((uint64_t)st.f_bavail * frsize) / (1024ULL * 1024ULL);
+}
+
+bool ModuleStorage::checkDiskFree() const {
+    uint64_t freeMB = freeDiskMB();
+    if (freeMB == 0) return true; // statvfs 失败视为可写，避免误停
+    return freeMB >= kMinFreeMB;
+}
+
+void ModuleStorage::triggerDiskEmergency() {
+    if (diskEmergency_.exchange(true)) return;
+    uint64_t freeMB = freeDiskMB();
+    std::cerr << "[Storage] DISK EMERGENCY: free " << freeMB
+              << " MB < min " << kMinFreeMB << " MB, stopping acquisition\n";
+    // 停采：发 Stop 给 DAQModule，产数方停止后本模块排空 ring 并收尾
+    msm::Message stopMsg("Stop");
+    stopMsg.setSender("Storage");
+    stopMsg.setTarget("DAQModule");
+    msm::MessageBus::instance().send(stopMsg);
+}
+
 void ModuleStorage::registerVars() {
     declareVar("recording", recording_);
     declareVar("save_path", savePath_);
+    declareVar("disk_free_mb", "U64",
+               [this]() { return std::to_string(freeDiskMB()); });
+    declareVar("disk_emergency", "U32",
+               [this]() { return diskEmergency_.load() ? "1" : "0"; });
     int maxCh = nCh_ > 0 ? nCh_ : MAX_CH;
     for (int i = 0; i < maxCh; i++) {
         std::string idx = std::to_string(i + 1);
