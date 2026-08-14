@@ -77,6 +77,22 @@ f256631  task 015: close merge Phase B (reload from runtime + saveToInit)
 - 前端：toolbar 加 `⚙ Config` 按钮 + 状态指示；点击 → POST /api/config → `window.open('http://localhost:8081')`
 - 失败处理：fork 失败/不可达 → toast 报错
 
+## 阶段 C.5 — config 编辑器合并进 webui（2026-08-14）
+- 动机：close 按钮竞态/PID 复用/SIGKILL 兜底、editor_alive 状态错乱、acquiring 门控失效
+  （probe 字符串匹配 bug：`"running": "true"` 带引号，`"running":true` 永不匹配）
+- 方案：ConfigEditorModule 以 MessageBus 消息并入 webui 进程；删进程管理+门控；
+  reload 剥离 Stop，仅空闲可用
+- 决策：保留 main_config_editor 源码，停构建；运行中保存只写文件不自动生效
+
 ## 日志
 - 2026-08-14 创建 task，进入阶段 C
 - 2026-08-14 T1/T2 调研完成；T4 方案确认，先实现磁盘安全（P0-B）
+- 2026-08-14 阶段 C.5 config 编辑器合并进 webui 完成：
+  - 932be8b 剥离 acquiring 门控与 probe 线程
+  - b1b5575 嵌入 ConfigEditorModule 状态机（链接 module_config，停构建 main_config_editor）
+  - e55305f 删除编辑器子进程管理全链路 + editor_alive
+  - 6f42c6e 新增 /api/config/{meta,config,save,save-app,reload} 端点（MessageBus sendAndWait）
+  - f71c9a6 reload 剥离 Stop（CLI + IPC 两分支），仅空闲门控
+  - e6eb18f 前端内嵌 Config 面板（cfgLoad/cfgRenderParams/doCfgSave/doCfgReload），reload 按钮采集中禁用
+  - 集成验证：launch sim → running；reload 空闲 `{"OK":"reload sent"}`；start→running:true 保持，
+    reload 不破坏采集；stop→false；meta/config/save/save-app 端点均 ok；测试进程已清理
