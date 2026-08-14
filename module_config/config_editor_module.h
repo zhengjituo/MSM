@@ -54,8 +54,13 @@ public:
     std::string applyEdit(const std::string& scope, int cardIndex, int channel,
                           const std::map<std::string, std::string>& params);
 
-    // app_config 子对象整体替换（合并到现有 app_config）
+    // app_config 子对象整体替换（合并到现有 app_config，含类型保护）
     std::string applyAppEdit(const std::string& appConfigJson);
+
+    // app_config 合并到指定目标文件（保存到启动配置），返回 "ok"/"locked"/error
+    // target 文件不存在或用默认内容时以 app_config 为主重建 {app_config:{...}}
+    std::string applyAppEditToFile(const std::string& appConfigJson,
+                                   const std::string& targetFile);
 
     // ── 只读编辑元数据（供前端下拉）──
     // 已知可编辑通道参数键（对齐 Qt ChannelConfig + DownSample）
@@ -79,6 +84,9 @@ private:
     nlohmann::ordered_json& configJson();   // 顶层
     nlohmann::ordered_json& cardsJson();
     nlohmann::ordered_json& appConfigJson();
+
+    // 合并 app_config（含类型保护）；失败返回 error 状态，成功返回空串
+    std::string mergeAppConfig(nlohmann::ordered_json& app, nlohmann::ordered_json& ac);
 
     std::string loadedPath_;
     nlohmann::ordered_json cfg_;           // 内存中持有完整配置

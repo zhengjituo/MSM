@@ -23,13 +23,30 @@
 - 原子写 tmp.<pid> + fsync + rename；版本迁移 .bak + 增量补默认
 - JSON 兼容：ordered_json 往返保键序/未知字段/值类型；类型保护已实现
 
-## TODO（待调研后细化）
-- [ ] T1 调研主程序 app_runtime_config.json / app_initial_config.json 加载机制
-- [ ] T2 确认编辑器默认操作 app_runtime_config.json
-- [ ] T3 Tab2 勾选「保存到启动配置」→ 写 app_initial_config.json
-- [ ] T4 webui 入口按钮（config 按钮 + 运行状态监视）
-- [ ] T5 磁盘空间安全（P0-B，module_storage）
-- [ ] T6 集成验证 + 提交 + 完结 task
+## TODO
+- [x] T1 调研主程序 app_runtime_config.json / app_initial_config.json 加载机制
+- [x] T2 主程序 reload 改为从 runtime 加载（main_hwdaq + main_simsrc 各 2 处）
+- [x] T3 编辑器默认操作 app_runtime_config.json
+- [x] T4 Tab2 勾选「保存到启动配置」→ 写 app_initial_config.json
+- [x] T5 严格保真写回验证（主程序 loadFromJson 读回 OK）
+- [x] T6 集成验证 + 提交 + 完结 task
+- [ ] T7（后续）webui 入口按钮 + 磁盘空间安全（P0-B）
+
+## 合并日志（2026-08-14）
+- T2：main_hwdaq.cpp / main_simsrc.cpp reload 两处改为 `loadFromJson(g_runtimeConfigPath)`，
+  去掉了 reload 时 saveToJson(runtime)（避免覆盖编辑器严格保真写回）；simsrc 保留 slot=0 特殊逻辑
+- T3：编辑器默认操作文件 runtime；meta 暴露 runtimeFile/initFile
+- T4：save-app 支持 saveToInit → `applyAppEditToFile()`（读目标文件→合并 app_config→原子写回，含类型保护）
+- T5：验证主程序自写解析器能读回编辑器写出的 runtime（cards=2, ch1=4, runId=888 正确）
+- 验证：编辑器回归 ALL PASS；新语义（runtime only / runtime+init / 类型拒绝）全部通过
+- 待办：webui 入口（config 按钮）+ P0-B 磁盘安全（阶段 C）
+
+## 合并设计（2026-08-13 已确认）
+- 功能分离：`config`=配置加载（reload 从 runtime 加载），`start`=采集启停
+- 启动仍从 initial 加载生成 runtime（不变）
+- reload 2 处改为 `loadFromJson(g_runtimeConfigPath)`（而非 g_initConfigPath）
+- 编辑器主操作文件 = app_runtime_config.json、严格保真写回（ordered_json保留字段/类型）
+- Tab2 勾选「保存到启动配置」→ 额外原子写 app_initial_config.json（启动加载文件）
 
 ## 日志
 - 2026-08-13 阶段 A 完结（commit 7a0a723），开始阶段 B 合并

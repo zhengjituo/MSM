@@ -61,8 +61,13 @@ select:disabled, input:disabled { opacity:.5; }
 
 <div id="appPanel" class="panel">
   <div class="card">
-    <div class="note">软件参数保存到 app_config；ConfigVersion 由系统维护，只读。</div>
+    <div class="note">软件参数保存到 <b>app_runtime_config.json</b>（运行配置，reload 生效）。</div>
     <div class="grid" id="appGrid"></div>
+    <div class="row" style="margin-top:12px">
+      <label style="min-width:0; display:flex; align-items:center; gap:6px">
+        <input type="checkbox" id="chkSaveToInit"> 同时保存到 app_initial_config.json（启动时加载的初始配置）
+      </label>
+    </div>
   </div>
   <button class="btn btn-primary" id="btnSaveApp">保存软件参数</button>
 </div>
@@ -271,9 +276,10 @@ async function saveApp() {
     else if (jt === 'number') ac[el.dataset.key] = parseFloat(el.value) || 0;
     else ac[el.dataset.key] = el.value;
   });
-  const { r, j } = await fetchJSON('/api/config/save-app', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ app_config: ac }) });
+  const saveToInit = $('chkSaveToInit').checked;
+  const { r, j } = await fetchJSON('/api/config/save-app', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ app_config: ac, saveToInit }) });
   if (r.status === 409) { toast('采集运行中，保存被拒绝'); refreshLock(); }
-  else if (j.status === 'ok') { toast('已保存'); loadCfg(); }
+  else if (j.status === 'ok') { toast(saveToInit ? '已保存（含启动配置）' : '已保存'); loadCfg(); }
   else toast('保存失败: ' + (j.status || r.status));
 }
 

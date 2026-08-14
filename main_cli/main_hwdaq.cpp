@@ -215,16 +215,17 @@ int main() {
                         continue;
                     }
                     if (line == "reload") {
-                        std::cout << "[main] Reloading...\n";
+                        std::cout << "[main] Reloading from runtime config...\n";
                         send("Stop >> -@ DAQModule");
                         std::this_thread::sleep_for(std::chrono::milliseconds(200));
                         send("Stop >> -@ Process");
                         std::this_thread::sleep_for(std::chrono::milliseconds(200));
                         send("Stop >> -@ Storage");
                         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                        configModule.config().loadFromJson(g_initConfigPath);
-                        configModule.config().saveToJson(g_runtimeConfigPath);
-                        {
+                        // 从 runtime 加载（编辑器改 runtime 后 reload 生效）
+                        if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
+                            std::cerr << "[main] Reload failed: cannot load " << g_runtimeConfigPath << "\n";
+                        } else {
                             msm::Message dist("Distribute");
                             dist.setTarget("ConfigModule");
                             dist.setSender("Main");
@@ -246,15 +247,16 @@ int main() {
 
     while (!g_stop.load()) {
         if (g_reload.exchange(false)) {
-            std::cout << "[main] Reloading (via IPC)...\n";
+            std::cout << "[main] Reloading (via IPC) from runtime config...\n";
             send("Stop >> -@ DAQModule");
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             send("Stop >> -@ Process");
             send("Stop >> -@ Storage");
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            configModule.config().loadFromJson(g_initConfigPath);
-            configModule.config().saveToJson(g_runtimeConfigPath);
-            {
+            // 从 runtime 加载（编辑器改 runtime 后 reload 生效）
+            if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
+                std::cerr << "[main] Reload failed: cannot load " << g_runtimeConfigPath << "\n";
+            } else {
                 msm::Message dist("Distribute");
                 dist.setTarget("ConfigModule");
                 dist.setSender("Main");

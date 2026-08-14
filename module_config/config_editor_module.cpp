@@ -319,16 +319,8 @@ std::string ConfigEditorModule::applyEdit(const std::string& scope, int cardInde
     return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
 }
 
-std::string ConfigEditorModule::applyAppEdit(const std::string& appJsonStr) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    if (acquiring_.load()) return "locked";
-    ordered_json ac;
-    try {
-        ac = ordered_json::parse(appJsonStr);
-    } catch (const std::exception& e) {
-        return std::string("error:parse:") + e.what();
-    }
-    auto& app = appConfigJson();
+// 合并 app_config（含类型保护）；成功返回空串，失败返回 "error:..."
+std::string ConfigEditorModule::mergeAppConfig(ordered_json& app, ordered_json& ac) {
     for (auto& [k, v] : ac.items()) {
         // 类型保护：原值为数字/布尔，新值为字符串时尝试转换；转换失败则拒绝整次保存
         if (app.contains(k) && v.is_string()) {
@@ -348,7 +340,50 @@ std::string ConfigEditorModule::applyAppEdit(const std::string& appJsonStr) {
         }
         app[k] = v;
     }
+    return "";
+}
+
+std::string ConfigEditorModule::applyAppEdit(const std::string& appJsonStr) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (acquiring_.load()) return "locked";
+    ordered_json ac;
+    try {
+        ac = ordered_json::parse(appJsonStr);
+    } catch (const std::exception& e) {
+        return std::string("error:parse:") + e.what();
+    }
+    auto& app = appConfigJson();
+    std::string err = mergeAppConfig(app, ac);
+    if (!err.empty()) return err;
     return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
+}
+
+std::string ConfigEditorModule::applyAppEditToFile(const std::string& appJsonStr,
+                                                   const std::string& targetFile) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (acquiring_.load()) return "locked";
+    ordered_json ac;
+    try {
+        ac = ordered_json::parse(appJsonStr);
+    } catch (const std::exception& e) {
+        return std::string("error:parse:") + e.what();
+    }
+    // 读取目标文件（若存在），合并 app_config 后原子写回
+    ordered_json target;
+    std::string content = readFile(targetFile);
+    bool exists = !content.empty();
+    if (exists) {
+        try {
+            target = ordered_json::parse(content);
+        } catch (const std::exception&) {
+            target = ordered_json::object();
+            exists = false;
+        }
+    }
+    if (!target.contains("app_config")) target["app_config"] = ordered_json::object();
+    std::string err = mergeAppConfig(target["app_config"], ac);
+    if (!err.empty()) return err;
+    return saveToFileAtomic(targetFile, target.dump(4)) ? "ok" : "error:write_failed";
 }
 
 // ── 消息驱动 ────────────────────────────────────────────
