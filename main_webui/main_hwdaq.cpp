@@ -501,6 +501,107 @@ int main() {
             });
     });
 
+    // ── Config 编辑（webui 进程内状态机）──
+    svr.Get("/api/config/meta", [](const httplib::Request&, httplib::Response& res) {
+        json meta;
+        json keys = json::array();
+        for (auto& k : msm::ConfigEditorModule::editableChannelKeys()) keys.push_back(k);
+        json enums = json::object();
+        for (auto& [k, v] : msm::ConfigEditorModule::enumOptions()) {
+            json arr = json::array();
+            for (auto& o : v) arr.push_back(o);
+            enums[k] = arr;
+        }
+        json cards = json::object();
+        for (auto& [k, v] : msm::ConfigEditorModule::cardTypeLabels()) cards[k] = v;
+        meta["keys"] = keys;
+        meta["enums"] = enums;
+        meta["cards"] = cards;
+        meta["version"] = g_configEditor.currentVersion();
+        meta["runtimeFile"] = g_runtimeCfgPath;
+        meta["initFile"] = g_initCfgPath;
+        res.set_content(meta.dump(), "application/json");
+    });
+
+    svr.Get("/api/config", [](const httplib::Request&, httplib::Response& res) {
+        std::string err;
+        if (!g_configEditor.importConfig(g_runtimeCfgPath, &err)) {
+            res.status = 404;
+            res.set_content("{\"status\":\"load failed\",\"msg\":\"" + err + "\"}", "application/json");
+            return;
+        }
+        res.set_content(g_configEditor.getConfigJson(), "application/json");
+    });
+
+    svr.Post("/api/config/save", [](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto j = nlohmann::json::parse(req.body);
+            std::string scope = j.value("scope", "channel");
+            int cardIndex = j.value("cardIndex", 0);
+            int channel = j.value("channel", 0);
+            std::string cmd = scope == "channel" ? "SaveChannel" : scope == "card" ? "SaveCard" : "SaveChassis";
+            msm::Message msg(cmd);
+            msg.setTarget("ConfigEditor");
+            msg.setSender("WebUI");
+            msg.data.set("cardIndex", cardIndex);
+            msg.data.set("channel", channel);
+            if (j.contains("params")) {
+                for (auto& [k, v] : j["params"].items()) {
+                    std::string sv = v.is_boolean() ? (v.get<bool>() ? "true" : "false")
+                                  : v.is_string() ? v.get<std::string>() : v.dump();
+                    msg.data.set("param." + k, sv);
+                }
+            }
+            msm::Message resp = msm::MessageBus::instance().sendAndWait(msg);
+            std::string status = resp.data.get("status", "timeout");
+            if (status == "ok") { res.set_content(R"({"status":"ok"})", "application/json"); return; }
+            if (status == "timeout") { res.status = 500; res.set_content(R"({"status":"editor timeout"})", "application/json"); return; }
+            res.status = 400;
+            res.set_content("{\"status\":\"" + status + "\"}", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(std::string("{\"status\":\"error\",\"msg\":\"") + e.what() + "\"}", "application/json");
+        }
+    });
+
+    svr.Post("/api/config/save-app", [](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto j = nlohmann::json::parse(req.body);
+            std::string appJson;
+            if (j.contains("app_config")) appJson = j["app_config"].dump();
+            else appJson = req.body;
+            msm::Message msg("SaveApp");
+            msg.setTarget("ConfigEditor");
+            msg.setSender("WebUI");
+            msg.data.set("app_config_json", appJson);
+            msm::Message resp = msm::MessageBus::instance().sendAndWait(msg);
+            std::string status = resp.data.get("status", "timeout");
+            if (status != "ok") {
+                res.status = (status == "timeout") ? 500 : 400;
+                res.set_content("{\"status\":\"" + status + "\"}", "application/json");
+                return;
+            }
+            bool saveToInit = j.value("saveToInit", false);
+            if (saveToInit) {
+                std::string st2 = g_configEditor.applyAppEditToFile(appJson, g_initCfgPath);
+                if (st2 != "ok") {
+                    res.status = 400;
+                    res.set_content("{\"status\":\"" + st2 + "\"}", "application/json");
+                    return;
+                }
+            }
+            res.set_content(R"({"status":"ok"})", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(std::string("{\"status\":\"error\",\"msg\":\"") + e.what() + "\"}", "application/json");
+        }
+    });
+
+    svr.Post("/api/config/reload", [&](const httplib::Request&, httplib::Response& res) {
+        std::string r = ipc.send("RELOAD");
+        res.set_content(r, "application/json");
+    });
+
     svr.Get("/api/status", [](const httplib::Request&, httplib::Response& res) {
         std::lock_guard<std::mutex> lock(g_snapMtx);
         res.set_content(buildSseData(g_snap), "application/json");
