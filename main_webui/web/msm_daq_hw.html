@@ -133,6 +133,7 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
       <span style="font-weight:600; font-size:12px; color:#a0a0b0;">app_config</span>
       <label style="font-size:12px; display:flex; gap:4px; color:#a0a0b0;"><input type="checkbox" id="cfgSaveToInit"> 同时写入启动配置</label>
+      <button class="btn btn-primary btn-sm" id="btnCfgSaveApp" onclick="cfgSaveApp()">保存软件参数</button>
     </div>
     <div id="cfgAppGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; max-height:200px; overflow:auto;"></div>
   </div>
@@ -444,6 +445,7 @@ function cfgRenderApp() {
   grid.innerHTML = '';
   const app = (CFG && CFG.app_config) || {};
   for (const k in app) {
+    if (k === 'ConfigVersion') continue;
     const wrap = document.createElement('div');
     wrap.style.display = 'flex';
     wrap.style.flexDirection = 'column';
@@ -452,9 +454,25 @@ function cfgRenderApp() {
     lb.textContent = k;
     lb.style.fontSize = '11px';
     lb.style.color = '#a0a0b0';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = String(app[k]);
+    const val = app[k];
+    let input;
+    if (typeof val === 'boolean') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = val;
+      input.dataset.jtype = 'bool';
+    } else if (typeof val === 'number' || (typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val))) {
+      input = document.createElement('input');
+      input.type = 'number';
+      input.step = 'any';
+      input.value = String(val);
+      input.dataset.jtype = 'number';
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.value = String(val);
+      input.dataset.jtype = 'string';
+    }
     input.dataset.key = k;
     input.style.width = '100%';
     input.style.background = '#16213e';
@@ -467,6 +485,20 @@ function cfgRenderApp() {
     wrap.appendChild(input);
     grid.appendChild(wrap);
   }
+}
+
+async function cfgSaveApp() {
+  const ac = {};
+  document.querySelectorAll('#cfgAppGrid input[data-key]').forEach(el => {
+    const jt = el.dataset.jtype;
+    if (jt === 'bool') ac[el.dataset.key] = el.checked;
+    else if (jt === 'number') ac[el.dataset.key] = parseFloat(el.value) || 0;
+    else ac[el.dataset.key] = el.value;
+  });
+  const saveToInit = document.getElementById('cfgSaveToInit').checked;
+  const { j } = await fetchJSON('/api/config/save-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_config: ac, saveToInit }) });
+  if (j.status === 'ok') { toast(saveToInit ? '软件参数已保存（含启动配置）' : '软件参数已保存'); cfgLoad(); }
+  else toast('保存失败: ' + (j.status || 'error'));
 }
 
 function cfgCollectParams() {
