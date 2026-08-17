@@ -113,7 +113,9 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
     <span style="font-weight:600;">Config</span>
     <span id="cfgVersion" style="color:#a0a0b0; font-size:12px;"></span>
-    <button class="btn btn-primary btn-sm" id="btnCfgSave" onclick="doCfgSave()">保存</button>
+    <button class="btn btn-primary btn-sm" onclick="cfgSave('channel')">保存当前通道</button>
+    <button class="btn btn-primary btn-sm" onclick="cfgSave('card')">保存本卡全部通道</button>
+    <button class="btn btn-primary btn-sm" onclick="cfgSave('chassis')">保存机箱全部 1073 通道</button>
     <button class="btn btn-warn btn-sm" id="btnCfgReload" onclick="doCfgReload()">Reload</button>
     <button class="btn btn-default btn-sm" onclick="toggleCfgPanel(false)">关闭</button>
   </div>
@@ -476,11 +478,12 @@ function cfgCollectParams() {
   return params;
 }
 
-async function doCfgSave() {
+async function cfgSave(scope) {
   const card = cfgCurrentCard();
+  if (!card) { toast('请先选择板卡'); return; }
   const key = document.getElementById('cfgSelChannel').value;
   const channel = key ? parseInt(key.replace('Channel#', ''), 10) : 0;
-  const body = { scope: 'channel', cardIndex: card.CardIndex, channel, params: cfgCollectParams() };
+  const body = { scope, cardIndex: card.CardIndex, channel, params: cfgCollectParams() };
   const { r, j } = await fetchJSON('/api/config/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (j.status === 'ok') { toast('已保存，reload 后生效'); cfgLoad(); }
   else toast('保存失败: ' + (j.status || r.status));
