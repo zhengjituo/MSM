@@ -228,6 +228,7 @@ static AppSnapshot g_snap;
 static msm::ConfigEditorModule g_configEditor;
 static std::string g_runtimeCfgPath;
 static std::string g_initCfgPath;
+static std::string g_pendingCfgPath;
 static std::mutex g_snapMtx;
 static std::condition_variable g_snapCv;
 static bool g_snapUpdated = false;
@@ -381,8 +382,27 @@ int main() {
         }
         g_runtimeCfgPath = cand + "app_runtime_config.json";
         g_initCfgPath = cand + "app_initial_config.json";
+        g_pendingCfgPath = cand + "app_pending_config.json";
         std::string err;
-        if (!g_configEditor.importConfig(g_runtimeCfgPath, &err))
+        // 首次运行：无 pending 时用 initial 播种
+        {
+            std::ifstream pf(g_pendingCfgPath, std::ios::binary);
+            bool hasPending = pf.good();
+            pf.close();
+            if (!hasPending) {
+                std::ifstream sf(g_initCfgPath, std::ios::binary);
+                std::string content((std::istreambuf_iterator<char>(sf)),
+                                    std::istreambuf_iterator<char>());
+                if (!content.empty()) {
+                    std::string serr;
+                    if (!g_configEditor.importConfig(g_initCfgPath, &serr))
+                        std::cerr << "[webui] init seed read failed: " << serr << "\n";
+                    else if (!g_configEditor.exportConfig(g_pendingCfgPath, &serr))
+                        std::cerr << "[webui] pending seed write failed: " << serr << "\n";
+                }
+            }
+        }
+        if (!g_configEditor.importConfig(g_pendingCfgPath, &err))
             std::cerr << "[webui] config editor init: " << err << "\n";
         msm::MessageBus::instance().registerModule(&g_configEditor);
         g_configEditor.start();
@@ -412,8 +432,6 @@ int main() {
             ipc.send("DISABLESAVE");
             saveEnabled = false;
             response = R"({"status":"save disabled"})";
-        } else if (cmd == "reload") {
-            response = ipc.send("RELOAD");
         } else if (cmd == "quit") {
             ipc.send("QUIT");
             response = R"({"status":"quitting"})";
@@ -518,6 +536,7 @@ int main() {
         meta["enums"] = enums;
         meta["cards"] = cards;
         meta["version"] = g_configEditor.currentVersion();
+        meta["pendingFile"] = g_pendingCfgPath;
         meta["runtimeFile"] = g_runtimeCfgPath;
         meta["initFile"] = g_initCfgPath;
         res.set_content(meta.dump(), "application/json");
@@ -525,7 +544,7 @@ int main() {
 
     svr.Get("/api/config", [](const httplib::Request&, httplib::Response& res) {
         std::string err;
-        if (!g_configEditor.importConfig(g_runtimeCfgPath, &err)) {
+        if (!g_configEditor.importConfig(g_pendingCfgPath, &err)) {
             res.status = 404;
             res.set_content("{\"status\":\"load failed\",\"msg\":\"" + err + "\"}", "application/json");
             return;
@@ -581,25 +600,11 @@ int main() {
                 res.set_content("{\"status\":\"" + status + "\"}", "application/json");
                 return;
             }
-            bool saveToInit = j.value("saveToInit", false);
-            if (saveToInit) {
-                std::string st2 = g_configEditor.applyAppEditToFile(appJson, g_initCfgPath);
-                if (st2 != "ok") {
-                    res.status = 400;
-                    res.set_content("{\"status\":\"" + st2 + "\"}", "application/json");
-                    return;
-                }
-            }
             res.set_content(R"({"status":"ok"})", "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(std::string("{\"status\":\"error\",\"msg\":\"") + e.what() + "\"}", "application/json");
         }
-    });
-
-    svr.Post("/api/config/reload", [&](const httplib::Request&, httplib::Response& res) {
-        std::string r = ipc.send("RELOAD");
-        res.set_content(r, "application/json");
     });
 
     svr.Get("/api/status", [](const httplib::Request&, httplib::Response& res) {
