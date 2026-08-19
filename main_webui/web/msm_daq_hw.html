@@ -71,7 +71,6 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <label><input type="checkbox" id="waveCheck"> Waveform</label>
   <button class="btn btn-start" id="btnStart" onclick="doStart()" disabled>▶ Start</button>
   <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>■ Stop</button>
-  <button class="btn btn-reload" id="btnReload" onclick="doReload()" disabled>↻ Reload</button>
   <button class="btn btn-default btn-sm" id="btnConfigPanel" onclick="toggleCfgPanel(true)">Config</button>
 </div>
 
@@ -116,7 +115,6 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
     <button class="btn btn-primary btn-sm" onclick="cfgSave('channel')">保存当前通道</button>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('card')">保存本卡全部通道</button>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('chassis')">保存机箱全部 1073 通道</button>
-    <button class="btn btn-warn btn-sm" id="btnCfgReload" onclick="doCfgReload()">Reload</button>
     <button class="btn btn-default btn-sm" onclick="toggleCfgPanel(false)">关闭</button>
   </div>
   <div id="cfgBody" style="display:grid; grid-template-columns:220px 1fr; gap:12px;">
@@ -132,7 +130,6 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <div id="cfgApp" style="margin-top:10px; border-top:1px solid #0f3460; padding-top:8px;">
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
       <span style="font-weight:600; font-size:12px; color:#a0a0b0;">app_config</span>
-      <label style="font-size:12px; display:flex; gap:4px; color:#a0a0b0;"><input type="checkbox" id="cfgSaveToInit"> 同时写入启动配置</label>
       <button class="btn btn-primary btn-sm" id="btnCfgSaveApp" onclick="cfgSaveApp()">保存软件参数</button>
     </div>
     <div id="cfgAppGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px;"></div>
@@ -229,10 +226,6 @@ function render(d) {
   document.getElementById('saveCheck').disabled = !backendRunning;
   document.getElementById('btnStart').disabled = !backendRunning || d.running;
   document.getElementById('btnStop').disabled = !backendRunning || !d.running;
-  document.getElementById('btnReload').disabled = !backendRunning;
-
-  const rld = document.getElementById('btnCfgReload');
-  if (rld) rld.disabled = !backendRunning || d.running;
 
   document.getElementById('saveCheck').checked = d.save_enabled;
 
@@ -315,9 +308,8 @@ function doQuitBackend() {
 
 function doStart() { post('/api/msg', 'start'); }
 function doStop() { post('/api/msg', 'stop'); }
-function doReload() { post('/api/msg', 'reload'); }
 
-let CFG_META = { keys: [], enums: {}, cards: {}, version: '', runtimeFile: '', initFile: '' };
+let CFG_META = { keys: [], enums: {}, cards: {}, version: '', pendingFile: '', runtimeFile: '', initFile: '' };
 let CFG = null;
 
 async function fetchJSON(url, opts) {
@@ -495,9 +487,8 @@ async function cfgSaveApp() {
     else if (jt === 'number') ac[el.dataset.key] = parseFloat(el.value) || 0;
     else ac[el.dataset.key] = el.value;
   });
-  const saveToInit = document.getElementById('cfgSaveToInit').checked;
-  const { j } = await fetchJSON('/api/config/save-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_config: ac, saveToInit }) });
-  if (j.status === 'ok') { toast(saveToInit ? '软件参数已保存（含启动配置）' : '软件参数已保存'); cfgLoad(); }
+  const { j } = await fetchJSON('/api/config/save-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_config: ac }) });
+  if (j.status === 'ok') { toast('软件参数已保存在待使用配置（下次启动生效）'); cfgLoad(); }
   else toast('保存失败: ' + (j.status || 'error'));
 }
 
@@ -517,13 +508,8 @@ async function cfgSave(scope) {
   const channel = key ? parseInt(key.replace('Channel#', ''), 10) : 0;
   const body = { scope, cardIndex: card.CardIndex, channel, params: cfgCollectParams() };
   const { r, j } = await fetchJSON('/api/config/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (j.status === 'ok') { toast('已保存，reload 后生效'); cfgLoad(); }
+  if (j.status === 'ok') { toast('已保存到待使用配置，下次启动生效'); cfgLoad(); }
   else toast('保存失败: ' + (j.status || r.status));
-}
-
-async function doCfgReload() {
-  const { j } = await fetchJSON('/api/config/reload', { method: 'POST' });
-  toast('reload: ' + (j.status || 'ok'));
 }
 
 function toggleSave() {
