@@ -17,8 +17,8 @@ using msm::Message;
 
 static std::atomic<bool> g_stop{false};
 
-// 解析 exe 路径，向上找 config/app_runtime_config.json（主操作文件）
-static std::string resolveConfigPath(const char* filename = "app_runtime_config.json") {
+// 解析 exe 路径，向上找 config/app_pending_config.json（待使用配置）
+static std::string resolveConfigPath(const char* filename = "app_pending_config.json") {
     char exe[1024];
     ssize_t len = ::readlink("/proc/self/exe", exe, sizeof(exe) - 1);
     std::string base;
@@ -41,12 +41,6 @@ static std::string resolveConfigPath(const char* filename = "app_runtime_config.
     if (::access(candidate.c_str(), R_OK) == 0) return candidate;
     std::string fallback = std::string("config/") + filename;
     return fallback;
-}
-
-// 解析配置文件所在目录（用于定位同目录的 initial 配置）
-static std::string dirName(const std::string& path) {
-    size_t s = path.rfind('/');
-    return s == std::string::npos ? "." : path.substr(0, s);
 }
 
 // 基于 exe 路径定位 web 页面（main_config_editor/build/msm_config_editor → ../web/config_editor.html）
@@ -79,7 +73,7 @@ int main(int argc, char** argv) {
     signal(SIGTERM, [](int) { g_stop.store(true); });
     signal(SIGHUP, [](int) { g_stop.store(true); });
 
-    // 可选参数：配置文件路径（默认 app_runtime_config.json）
+    // 可选参数：配置文件路径（默认 app_pending_config.json）
     std::string cfgArg;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--config" && i + 1 < argc) cfgArg = argv[i + 1];
@@ -90,9 +84,8 @@ int main(int argc, char** argv) {
     bus.registerModule(&editor);
     editor.start();
 
-    // 主操作文件 = app_runtime_config.json；启动配置（可勾选写入）= app_initial_config.json
+    // 主操作文件 = app_pending_config.json（待使用配置，下次启动生效）
     std::string cfgPath = cfgArg.empty() ? resolveConfigPath() : cfgArg;
-    std::string initPath = dirName(cfgPath) + "/app_initial_config.json";
     std::string err;
     if (!editor.importConfig(cfgPath, &err)) {
         std::cerr << "[config-editor] import failed: " << err << "\n";
@@ -189,13 +182,6 @@ int main(int argc, char** argv) {
             std::string status = editor.applyAppEdit(appJson);
             if (status == "locked") { res.status = 409; res.set_content(R"({"status":"locked"})", "application/json"); return; }
             if (status.rfind("error", 0) == 0) { res.status = 400; res.set_content("{\"status\":\"" + status + "\"}", "application/json"); return; }
-            // 勾选「保存到启动配置」→ 额外写 app_initial_config.json
-            bool saveToInit = j.value("saveToInit", false);
-            if (saveToInit) {
-                std::string st2 = editor.applyAppEditToFile(appJson, initPath);
-                if (st2 == "locked") { res.status = 409; res.set_content(R"({"status":"locked"})", "application/json"); return; }
-                if (st2.rfind("error", 0) == 0) { res.status = 400; res.set_content("{\"status\":\"" + st2 + "\"}", "application/json"); return; }
-            }
             res.set_content(R"({"status":"ok"})", "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
