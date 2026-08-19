@@ -19,7 +19,6 @@
 #include <unistd.h>
 
 static std::atomic<bool> g_stop{false};
-static std::atomic<bool> g_reload{false};
 static void handle_signal(int) {
     g_stop.store(true);
 }
@@ -33,10 +32,7 @@ class ControllerModule : public msm::Module {
 public:
     ControllerModule() : Module("Controller") {}
     void handleState(const msm::Message& msg) override {
-        if (msg.cmd == "Reload") {
-            std::cout << "[Controller] Reload triggered via IPC\n";
-            g_reload.store(true);
-        } else if (msg.cmd == "Quit") {
+        if (msg.cmd == "Quit") {
             std::cout << "[Controller] Quit triggered via IPC\n";
             g_stop.store(true);
         }
@@ -44,7 +40,10 @@ public:
     msm::ModuleVars* getVars() override { return &tableVars_; }
 };
 
+#include "config_handoff.h"
+
 static std::string g_initConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_initial_config.json";
+static std::string g_pendingConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_pending_config.json";
 static std::string g_runtimeConfigPath = std::string(MSM_PROJECT_ROOT) + "/config/app_runtime_config.json";
 
 static void printStatus(const ModuleDAQ& daq,
@@ -80,13 +79,15 @@ int main() {
     bus.registerModule(&configModule);
     configModule.start();
 
-    // Load initial config (synchronous direct call for setup needs)
-    if (!configModule.config().loadFromJson(g_initConfigPath)) {
-        std::cerr << "[main] Failed to load " << g_initConfigPath << "\n";
+    // Load config: pending（待使用）→ runtime（运行使用），后端自主交接
+    if (ensureRuntimeConfig(g_initConfigPath, g_pendingConfigPath, g_runtimeConfigPath) != 0) {
+        std::cerr << "[main] Failed to ensure runtime config\n";
         return 1;
     }
-    // Save initial as runtime config
-    configModule.config().saveToJson(g_runtimeConfigPath);
+    if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
+        std::cerr << "[main] Failed to load " << g_runtimeConfigPath << "\n";
+        return 1;
+    }
     std::cout << "[main] Config loaded\n";
 
     const auto& cfg = configModule.config();
@@ -159,7 +160,7 @@ int main() {
     std::cout << "[main] DAQ ready: " << daq.getRingCount() << " rings\n";
 
     std::cout << "[main] Running. IPC: /tmp/msm_daq.sock\n"
-              << "Commands: start / stop / enablesave / disablesave / status / reload / quit\n";
+              << "Commands: start / stop / enablesave / disablesave / status / quit\n";
 
     std::thread cli([&]() {
         std::string rbuf;
@@ -214,22 +215,6 @@ int main() {
                         printStatus(daq, process, storage);
                         continue;
                     }
-                    if (line == "reload") {
-                        std::cout << "[main] Reloading from runtime config...\n";
-                        // 剥离 Stop：reload 仅空闲时由前端门控调用；此处直接加载
-                        if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
-                            std::cerr << "[main] Reload failed: cannot load " << g_runtimeConfigPath << "\n";
-                        } else {
-                            msm::Message dist("Distribute");
-                            dist.setTarget("ConfigModule");
-                            dist.setSender("Main");
-                            dist.data.set("isInit", false);
-                            msm::MessageBus::instance().send(dist);
-                        }
-                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                        std::cout << "[main] Reload done. Type 'start' to begin acquisition.\n";
-                        continue;
-                    }
                     std::cout << "[main] Sending: " << line << std::endl;
                     send(line);
                 } else if (c != '\r') {
@@ -240,20 +225,6 @@ int main() {
     });
 
     while (!g_stop.load()) {
-        if (g_reload.exchange(false)) {
-            std::cout << "[main] Reloading (via IPC) from runtime config...\n";
-            // 剥离 Stop：reload 仅空闲时由前端门控调用；此处直接加载
-            if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
-                std::cerr << "[main] Reload failed: cannot load " << g_runtimeConfigPath << "\n";
-            } else {
-                msm::Message dist("Distribute");
-                dist.setTarget("ConfigModule");
-                dist.setSender("Main");
-                dist.data.set("isInit", false);
-                msm::MessageBus::instance().send(dist);
-            }
-            std::cout << "[main] Reload done (idle). Click Start to resume.\n";
-        }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 

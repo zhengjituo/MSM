@@ -1,6 +1,8 @@
 set(TARGET_DIR ${CMAKE_SOURCE_DIR}/main_cli/build)
 
-add_executable(msm_cli_simsrc main_simsrc.cpp)
+set(CONFIG_HANDOFF_SRC config_handoff.cpp)
+
+add_executable(msm_cli_simsrc main_simsrc.cpp ${CONFIG_HANDOFF_SRC})
 set_target_properties(msm_cli_simsrc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_compile_definitions(msm_cli_simsrc PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(msm_cli_simsrc
@@ -13,7 +15,7 @@ target_link_libraries(msm_cli_simsrc
     user_circular_buffer
 )
 
-add_executable(msm_cli_hwdaq main_hwdaq.cpp)
+add_executable(msm_cli_hwdaq main_hwdaq.cpp ${CONFIG_HANDOFF_SRC})
 set_target_properties(msm_cli_hwdaq PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_compile_definitions(msm_cli_hwdaq PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 target_include_directories(msm_cli_hwdaq PRIVATE ${CMAKE_SOURCE_DIR}/sdk_include)
