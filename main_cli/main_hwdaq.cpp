@@ -8,6 +8,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <functional>
 #include <csignal>
 #include <atomic>
 #include <memory>
@@ -19,6 +20,7 @@
 #include <unistd.h>
 
 static std::atomic<bool> g_stop{false};
+static std::function<void()> g_startFn;
 static void handle_signal(int) {
     g_stop.store(true);
 }
@@ -35,6 +37,8 @@ public:
         if (msg.cmd == "Quit") {
             std::cout << "[Controller] Quit triggered via IPC\n";
             g_stop.store(true);
+        } else if (msg.cmd == "Start" && g_startFn) {
+            g_startFn();
         }
     }
     msm::ModuleVars* getVars() override { return &tableVars_; }
@@ -114,6 +118,41 @@ int main() {
     bus.registerModule(controller.get());
     controller->start();
 
+    // start 完整链：每次 start 重载配置（pending→runtime）→ Init 重配硬件 → 开始采集
+    g_startFn = [&]() {
+        if (g_stop.load()) return;
+        std::cout << "[main] start: reload config -> init hw -> start\n";
+        if (ensureRuntimeConfig(g_initConfigPath, g_pendingConfigPath, g_runtimeConfigPath) != 0) {
+            std::cerr << "[main] start: ensure runtime config failed\n";
+            return;
+        }
+        if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
+            std::cerr << "[main] start: reload " << g_runtimeConfigPath << " failed\n";
+            return;
+        }
+        const auto& cfg2 = configModule.config();
+        msm::Message daqInit("Init");
+        daqInit.data.data = cfg2.toKeyValues();
+        daqInit.setTarget("DAQModule");
+        daqInit.setSender("Main");
+        msm::MessageBus::instance().send(daqInit);
+        for (int i = 0; i < 100 && !daq.isConfigured(); i++)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (!daq.isHwReady()) {
+            for (int i = 0; i < 100 && !daq.isHwReady(); i++)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (!daq.isHwReady()) {
+                std::cerr << "[main] start: hw init timeout\n";
+                return;
+            }
+        }
+        send("Start >> -@ Storage");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        send("Start >> -@ Process");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        send("Start >> -@ DAQModule");
+    };
+
     msm::IPCServer ipc("/tmp/msm_daq.sock");
     bus.registerModule(&ipc);
     ipc.start();
@@ -186,11 +225,7 @@ int main() {
                         break;
                     }
                     if (line == "start") {
-                        send("Start >> -@ Storage");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        send("Start >> -@ Process");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        send("Start >> -@ DAQModule");
+                        if (g_startFn) g_startFn();
                         continue;
                     }
                     if (line == "stop") {

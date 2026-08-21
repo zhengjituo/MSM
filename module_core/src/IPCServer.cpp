@@ -235,18 +235,8 @@ std::string IPCServer::process(const std::string& line)
             MessageBus::instance().send(quitMsg);
             return "{\"OK\":\"quitting\"}";
         }
-        if (upperLine == "RELOAD") {
-            Message reloadMsg("Reload");
-            reloadMsg.setTarget("Controller");
-            MessageBus::instance().send(reloadMsg);
-            return "{\"OK\":\"reload sent\"}";
-        }
         if (upperLine == "START") {
-            Message s("Start"); s.setTarget("Storage"); MessageBus::instance().send(s);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            Message p("Start"); p.setTarget("Process"); MessageBus::instance().send(p);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            Message d("Start"); d.setTarget("DAQModule"); MessageBus::instance().send(d);
+            Message s("Start"); s.setTarget("Controller"); MessageBus::instance().send(s);
             return "{\"OK\":\"start sent\"}";
         }
         if (upperLine == "STOP") {

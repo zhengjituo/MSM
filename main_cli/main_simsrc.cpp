@@ -8,6 +8,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <functional>
 #include <csignal>
 #include <atomic>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "config_handoff.h"
 
 static std::atomic<bool> g_stop{false};
+static std::function<void()> g_startFn;
 static void handle_signal(int) {
     g_stop.store(true);
 }
@@ -32,6 +34,8 @@ public:
     void handleState(const msm::Message& msg) override {
         if (msg.cmd == "Quit") {
             g_stop.store(true);
+        } else if (msg.cmd == "Start" && g_startFn) {
+            g_startFn();
         }
     }
     msm::ModuleVars* getVars() override { return &tableVars_; }
@@ -135,6 +139,43 @@ int main() {
     bus.registerModule(controller.get());
     controller->start();
 
+    // start 完整链：每次 start 重载配置（pending→runtime）→ Configure 模拟源 → 开始采集
+    g_startFn = [&]() {
+        if (g_stop.load()) return;
+        std::cout << "[main] start: reload config -> configure sim -> start\n";
+        if (ensureRuntimeConfig(g_initConfigPath, g_pendingConfigPath, g_runtimeConfigPath) != 0) {
+            std::cerr << "[main] start: ensure runtime config failed\n";
+            return;
+        }
+        if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
+            std::cerr << "[main] start: reload " << g_runtimeConfigPath << " failed\n";
+            return;
+        }
+        const auto& cfg2 = configModule.config();
+        int trigLen = 512;
+        std::string waveData = "1";
+        const auto* ch1 = cfg2.getChannel(1, 1);
+        if (ch1) {
+            trigLen = std::stoi(ch1->trig_length);
+            waveData = ch1->wave_data_enable;
+        }
+        msm::Message simCfg("Configure");
+        simCfg.setTarget("DAQModule");
+        simCfg.setSender("Main");
+        simCfg.data.set("NumChannels", sim.getRingCount());
+        simCfg.data.set("TrigLength", trigLen);
+        simCfg.data.set("WaveDataEnable", waveData);
+        simCfg.data.set("FramesPerCycle", 10000);
+        simCfg.data.set("TriggerRateHz", 100000);
+        msm::MessageBus::instance().send(simCfg);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        send("Start >> -@ Storage");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        send("Start >> -@ Process");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        send("Start >> -@ DAQModule");
+    };
+
     msm::IPCServer ipc("/tmp/msm_daq.sock");
     bus.registerModule(&ipc);
     ipc.start();
@@ -174,11 +215,7 @@ int main() {
                 break;
             }
             if (line == "start") {
-                send("Start >> -@ Storage");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Start >> -@ Process");
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                send("Start >> -@ DAQModule");
+                if (g_startFn) g_startFn();
                 continue;
             }
             if (line == "stop") {

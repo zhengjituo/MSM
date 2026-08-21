@@ -102,6 +102,8 @@ bool ConfigImpl::loadFromJson(const std::string& path) {
 }
 
 bool ConfigImpl::loadFromJsonString(const std::string& json) {
+    cards.clear();  // 支持重复加载（start 重载配置时不能叠加）
+    slot = 0;
     std::string app = findBrace(json, "app_config");
     if (!app.empty()) {
         auto_acq_on_start = findValue(app, "autoAcqInEpicsWhenSoftwareStarts") == "true";
