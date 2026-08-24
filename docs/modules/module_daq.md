@@ -21,9 +21,9 @@
 
 | 帧 | 功能 |
 |----|------|
-| Init | 编排入口：顺序 ReadConfig → InitHW → UpdateConfig |
+| Init | 编排入口：顺序 ReadConfig → InitHW → UpdateConfig（hw 已就绪时跳过重开，仅推参） |
 | ReadConfig | JSON → DAQ_Config 内存容器，分配 ring buffer |
-| InitHW | SDK open+init 板卡（首次）；reload 时先 close 再 open+init |
+| InitHW | SDK open+init 板卡（首次）；hw 已就绪时单独调用先 close 再重新 open+init |
 | UpdateConfig | 单点写全部硬件寄存器（板卡级 + 通道级） |
 | Start | 启动接收 → 2s settle → 3010 TRIG=ON |
 | Stop | 3010 TRIG=OFF → flush → 停止通道 |

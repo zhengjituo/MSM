@@ -4,9 +4,9 @@
 
 | 帧名 | 触发方式 | 功能 |
 |------|----------|------|
-| **Init** | 进程启动时 main 发送 | **编排入口：顺序执行 ReadConfig → InitHW → UpdateConfig** |
+| **Init** | 进程启动时 main 发送；start 链重配时再次发送 | **编排入口：顺序执行 ReadConfig → InitHW → UpdateConfig** |
 | ReadConfig | Init 内部调用 / 运行时单独调用 | 从 key-value 加载到 DAQ_Config 内存容器（不操作硬件） |
-| InitHW | Init 内部调用 / 运行时单独调用 | SDK 扫描 → open+init 全部板卡（首次）；reload 时 close 再重新 open+init 以重置硬件 |
+| InitHW | Init 内部调用 / 运行时单独调用 | SDK 扫描 → open+init 全部板卡（首次）；hw 已就绪时单独调用则先 close 再重新 open+init 以重置硬件 |
 | UpdateConfig | Init 内部调用 / 运行时单独调用 | **单点：全部硬件寄存器写入（板卡级 + 通道级）** |
 | Start | 用户触发 | 启动接收 → Settle → 3010 TRIG=ON |
 | ReadOnce | RunLoop 空闲时自投递 | 非阻塞读帧 → ringbuffer |
@@ -17,14 +17,17 @@
 
 ## Init 帧（启动编排入口）
 
-**触发**: 进程启动时 main 发送 `Init >> ->| DAQModule`（携带完整配置 key-value）。
+**触发**: 进程启动时 main 发送 `Init >> ->| DAQModule`（携带完整配置 key-value）；
+start 链重配时（每次 Start 前）再次发送。
 
 **流程**（顺序执行，不投递消息，直接调用）:
 1. `onReadConfig(msg.data)` — 加载配置到内存容器
-2. `initHW()` — SDK 扫描、open+init 板卡（首次执行）；reload 时先 close 再重新 open+init 以重置硬件
+2. `initHW()` — SDK 扫描、open+init 板卡（仅 hw 未就绪时执行；已就绪则跳过，不关闭重开）
 3. `updateConfig()` — 板卡级 + 通道级寄存器全部写入硬件
 
 > Init 是三帧的显式编排者，三帧之间不存在链式耦合。ReadConfig / InitHW / UpdateConfig 保持各自独立可调用。
+> 重复 Init（hw 已就绪）只刷新内存配置并重新推参，不动硬件连接——这是 start 链
+> 「每次 Start 重配」的基础（task 017）。
 
 ---
 
@@ -44,7 +47,7 @@
 
 ## UpdateConfig 帧
 
-**触发**: Init 帧内部调用（`①ReadConfig → ②InitHW → ③UpdateConfig`）；或运行时单独发送 `UpdateConfig >> ->| DAQModule`（如 reload 后重新写参）。
+**触发**: Init 帧内部调用（`①ReadConfig → ②InitHW → ③UpdateConfig`）；或运行时单独发送 `UpdateConfig >> ->| DAQModule`（如 start 链重配后重新写参）。
 
 **功能**: **单点** —— 所有硬件配置（板卡级 + 通道级）统一在此完成。
 
@@ -66,11 +69,11 @@
 
 **触发**: Init 帧内部调用；或运行时单独发送 `InitHW >> ->| DAQModule`。
 
-**功能**: 卡片级初始化（自检、校准等慢操作）。首次正常执行；reload 时先 close 全部板卡再重新 open+init，以强制硬件重置。
+**功能**: 卡片级初始化（自检、校准等慢操作）。首次正常执行；hw 已就绪时先 close 全部板卡再重新 open+init（SDK 不反初始化），以强制硬件重置。
 
 **流程**:
 1. **首次执行**: `CxDeviceSdkInit()` — SDK 初始化
-   **Reload 执行**: 跳过 SDK 初始化，先 close 全部已打开板卡（card3010_ + cards1073_），清除卡片列表
+   **重复执行**（hw 已就绪）: 跳过 SDK 初始化，先 close 全部已打开板卡（card3010_ + cards1073_），清除卡片列表
 2. 枚举 PXIe 机箱，发现所有板卡
 3. 分类收集 **1073** 采集卡和 **3010** 触发卡
 4. 按 slot 号排序 1073 卡
@@ -242,16 +245,16 @@ Init（编排入口）
 
 ## 关键设计原则
 
-1. **Init 帧是显式编排者**。ReadConfig / InitHW / UpdateConfig 三帧无链式耦合，由 Init 帧按 `①→②→③` 顺序直接调用。任一帧均可独立发送（`ReadConfig` reload 配置、`UpdateConfig` 运行时改参、`InitHW` 诊断重初始化）。
+1. **Init 帧是显式编排者**。ReadConfig / InitHW / UpdateConfig 三帧无链式耦合，由 Init 帧按 `①→②→③` 顺序直接调用。任一帧均可独立发送（`ReadConfig` 重读配置、`UpdateConfig` 运行时改参、`InitHW` 诊断重初始化）。
 
 2. **分层生命周期**:
 
    | 阶段 | 操作 | 写入硬件? | 频次 |
    |------|------|-----------|------|
-   | **Init** (编排) | 顺序调用 ReadConfig + InitHW + UpdateConfig | 见子帧 | 一次 / reload |
-   | ReadConfig | 加载 JSON → DAQ_Config → ringbuffer | 否（纯内存） | 一次 / reload |
-   | InitHW | SDK init → 扫描 → open+init 板卡 | 仅 open+init（不自检校准写参） | 首次一次，reload 跳过 |
-   | UpdateConfig | 板卡级 + 通道级寄存器写参 | **是（唯一入口）** | 按需（首次 / reload） |
+   | **Init** (编排) | 顺序调用 ReadConfig + InitHW + UpdateConfig | 见子帧 | 启动一次 / 每次 Start 重配 |
+   | ReadConfig | 加载 JSON → DAQ_Config → ringbuffer | 否（纯内存） | 一次 / 每次 Start 重配 |
+   | InitHW | SDK init → 扫描 → open+init 板卡 | 仅 open+init（不自检校准写参） | 仅 hw 未就绪；重复 Init 跳过 |
+   | UpdateConfig | 板卡级 + 通道级寄存器写参 | **是（唯一入口）** | 按需（首次 / 每次重配） |
    | Start/Stop | 启停采集、TRIG ON/OFF | 仅 TRIG 寄存器 | 多次循环 |
    | CloseHW | close 板卡 → SDK_Deinit | 仅 close | 一次（退出） |
 

@@ -72,8 +72,13 @@ MSM_DAQ/
 - **main_cli** — 稳定。CLI + IPC 交互，支持 Storage 录盘
   - 二进制：`msm_cli_hwdaq`（硬件）、`msm_cli_simsrc`（仿真）、`msm_ipc_shell`（IPC 终端）
   - IPC 路径：`/tmp/msm_daq.sock`
-  - 命令：`start` / `stop` / `enablesave` / `disablesave` / `status` / `reload` / `quit`
-- **main_webui** — 开发中。IPC-to-HTTP 桥接 + Web GUI
+  - 命令：`start` / `stop` / `enablesave` / `disablesave` / `status` / `quit`
+    （reload 已移除，task 017：配置经 pending→runtime 于每次 Start 时生效，
+    设计见 `docs/superpowers/specs/2026-08-19-config-pending-chain-design.md`）
+- **main_webui** — 稳定。内嵌完整后端 + Web GUI（SSE 状态/特征/波形、ECharts）
+  - Config 面板编辑 `app_pending_config.json`；首次启动无 pending 时从 initial 播种
+  - Start 由后端自主完成 pending→runtime 交接并重配硬件；无 reload 按钮/API
+  - 部署注意：httplib 默认 SO_REUSEPORT，换二进制前先杀干净旧 msm_webui 实例
 
 ### 目录设计规则
 - 模块扁平化：`module_xxx/`，共享依赖在顶层

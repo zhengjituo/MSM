@@ -27,11 +27,16 @@
 |------|------|
 | `frame_format_PD.md` | 物理帧结构：Header/Data/Trailer、TrigID、BunchID、帧尾特征字段 |
 
-## 当前版本状态（task 010）
+## 当前版本状态（task 017）
 
 - **main_cli** — 稳定。CLI + IPC 交互，支持 Storage 录盘
   - `msm_cli_hwdaq` + `msm_ipc_shell` + `msm_cli_simsrc`
-  - Reload 不自动 Start，等待手动 Start
+  - 命令：start / stop / enablesave / disablesave / status / quit（reload 已移除）
+- **配置单链式生效** — initial → pending → runtime；webui 只编辑 pending，
+  后端每次 Start 自主完成 pending→runtime 交接 + 重配硬件，无运行中热改。
+  设计：`superpowers/specs/2026-08-19-config-pending-chain-design.md`
+- **main_webui** — 稳定。内嵌完整后端 + Web GUI
+  - Config 面板编辑 `app_pending_config.json`（首启从 initial 播种）；无 reload 按钮/API
 - **main_webui** — 稳定。IPC-to-HTTP 桥接 + 后端进程管理（Run/Quit）+ 特征表 + 帧索引控制
   - 通过 `MSM_CLI_PATH` 环境变量或自动推断查找 CLI 二进制
   - HW/SIM 模式选择，fork+exec 启动后端进程

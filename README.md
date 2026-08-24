@@ -130,7 +130,9 @@ cmake -B build && cmake --build build -j
 ./main_cli/build/msm_cli_simsrc   # 仿真采集（无需硬件）
 ./main_webui/build/msm_webui      # Web 监控
 
-# CLI: start / stop / enablesave / disablesave / status / reload / quit
+# CLI: start / stop / enablesave / disablesave / status / quit
+# 配置生效：webui 编辑 app_pending_config.json → 每次 Start 时后端自动
+#           pending→runtime 交接并重配硬件（无 reload；见 task 017）
 ```
 
 ## 目录结构
