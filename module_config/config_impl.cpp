@@ -127,6 +127,9 @@ bool ConfigImpl::loadFromJsonString(const std::string& json) {
         if (run_serial.empty()) run_serial = "r00001";
         frame_size = (size_t)findInt(app, "frameSize", 1152);
         trig_delay_time_fix = findInt(app, "trigDelayTimeFix", 1600);
+        ring_size_mb = (size_t)findInt(app, "RingSizeMB", 256);
+        if (ring_size_mb < 8) ring_size_mb = 8;         // 下限保护
+        if (ring_size_mb > 1024) ring_size_mb = 1024;   // 上限保护
     }
 
     std::string daq = findBrace(json, "DaqParameter");
@@ -340,7 +343,8 @@ bool ConfigImpl::saveToJson(const std::string& path) const {
     f << "        \"expNo\": " << exp_no << ",\n";
     f << "        \"runSerial\": \"" << run_serial << "\",\n";
     f << "        \"frameSize\": " << frame_size << ",\n";
-    f << "        \"trigDelayTimeFix\": " << trig_delay_time_fix << "\n";
+    f << "        \"trigDelayTimeFix\": " << trig_delay_time_fix << ",\n";
+    f << "        \"RingSizeMB\": " << ring_size_mb << "\n";
     f << "    }\n";
     f << "}\n";
 

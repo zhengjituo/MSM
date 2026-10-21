@@ -95,6 +95,7 @@ struct ConfigImpl {
     int slot = 0;
     size_t frame_size = 0;
     int trig_delay_time_fix = 450;
+    size_t ring_size_mb = 256;   // 每通道 ring 大小（app_config.RingSizeMB）
 
     bool loadFromJson(const std::string& path);
     bool loadFromJsonString(const std::string& json);
