@@ -147,14 +147,19 @@ ModuleVars* IPCServer::getVars()
 void IPCServer::runServer()
 {
     while (running_.load()) {
+        // 先取局部副本：stop() 可能并发把 serverFd_ 关闭并置 -1，
+        // 对 -1 调 FD_SET 会被 glibc fortify 判为 buffer overflow 而 abort
+        int fd = serverFd_;
+        if (fd < 0) break;
+
         fd_set fds;
         FD_ZERO(&fds);
-        FD_SET(serverFd_, &fds);
+        FD_SET(fd, &fds);
         timeval tv{1, 0};
 
-        if (select(serverFd_ + 1, &fds, nullptr, nullptr, &tv) > 0
-            && FD_ISSET(serverFd_, &fds)) {
-            int clientFd = accept(serverFd_, nullptr, nullptr);
+        if (select(fd + 1, &fds, nullptr, nullptr, &tv) > 0
+            && FD_ISSET(fd, &fds)) {
+            int clientFd = accept(fd, nullptr, nullptr);
             if (clientFd >= 0) {
                 handleClient(clientFd);
             }
