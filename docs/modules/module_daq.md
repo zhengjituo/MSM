@@ -29,6 +29,9 @@
 - 通道编号 = `Card#N` 在 JSON 中的顺序 × 卡内通道顺序
 - `Status` 额外回传 `scanned_1073_slots` / `scanned_3010_slot`（机箱实际扫描结果，
   WebUI 作为配置提示）
+- `Status` 每通道回传 `chN_slot`（机箱卡槽，-1 未知），WebUI 据此按卡分组展示：
+  Frame Summary 每卡一行表头、Feature Table 每卡一张小表（多卡横向铺开）、
+  波形每卡一个分节（slot 签名变化时重建）；无 slot 信息（sim/旧后端）回退平铺
 - ring 大小取 `app_config.RingSizeMB`（默认 256MB，范围 8–1024）
 - 卡集合变更（增/减卡）→ Init 明确报错「启用通道数变化」，**需重启进程**：
   ring/Process/Storage 通道数在进程启动时固定（main 按初始配置创建），
