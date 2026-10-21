@@ -57,6 +57,8 @@ config/app_pending_config.json
 # Backup
 backup/
 *.bak
+# 例外：多卡配置模板要入库（1/2/4 卡），方便按需覆盖 pending
+!config/app_initial_config_*card.json.bak
 
 # Worktrees
 .worktrees/
