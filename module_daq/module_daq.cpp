@@ -13,6 +13,17 @@
 #include <cstdio>
 #include <climits>
 #include <unordered_map>
+#include <set>
+
+// 整型列表拼接（错误信息 / 状态摘要）
+static std::string joinInts(const std::vector<int>& v) {
+    std::string s;
+    for (size_t i = 0; i < v.size(); i++) {
+        if (i) s += ",";
+        s += std::to_string(v[i]);
+    }
+    return s.empty() ? "无" : s;
+}
 
 // WorkMode string → int mapping (ref Qt KWorkModeMap)
 static int mapWorkMode(const std::string& mode) {
@@ -73,15 +84,32 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
     } else if (msg.cmd == "Init") {
         if (emergencyStop_.load()) emergencyStop_ = false;
         onReadConfig(msg.data);
-        // reload: hw 已初始化，只需推送参数，不关闭重开
-        if (!hwReady_.load())
-            initHW();
-        updateConfig();
+        // 多卡严格匹配：hw 未就绪，或配置卡集合与已打开集合不一致 → 重新扫描/打开
+        std::string err;
+        bool ok = true;
+        if (!hwReady_.load() || !cardSetMatchesOpen()) {
+            ok = initHW(err);
+        }
+        if (ok && !updateConfig()) {
+            ok = false;
+            err = "无活动通道（检查配置 runEnable 与通道数）";
+        }
+        // 回 Response：start 链据 status 判断是否继续
+        if (!msg.getSender().empty()) {
+            msm::Message response("Response");
+            response.setTarget(msg.getSender());
+            response.setCorrelationId(msg.getCorrelationId());
+            response.data.set("status", ok ? "ok" : "error");
+            if (!ok) response.data.set("error", err);
+            msm::MessageBus::instance().send(response);
+        }
     } else if (msg.cmd == "Configure" || msg.cmd == "ReadConfig") {
         onReadConfig(msg.data);
         updateConfig();
     } else if (msg.cmd == "InitHW") {
-        initHW();
+        std::string err;
+        if (!initHW(err))
+            std::cerr << "[ModuleDAQ] InitHW failed: " << err << "\n";
     } else if (msg.cmd == "UpdateConfig") {
         updateConfig();
 
@@ -409,6 +437,9 @@ void ModuleDAQ::onStatus(msm::Message& response) {
                           std::to_string(s.frame_size[i]));
     }
     response.data.set("running", s.is_running ? "true" : "false");
+    // 最近一次机箱扫描结果（多卡配置/排障用）
+    response.data.set("scanned_1073_slots", joinInts(scanned1073Slots_));
+    response.data.set("scanned_3010_slot", std::to_string(scanned3010Slot_));
 }
 
 void ModuleDAQ::doReadOnce() {
@@ -493,26 +524,69 @@ void ModuleDAQ::stopChannels() {
 }
 
 // ── 硬件初始化（一次，含自检校准）─────────────────────────────
-bool ModuleDAQ::initHW() {
-    if (hwReady_.load()) {
-        std::cout << "[ModuleDAQ] Reload: closing cards for re-init...\n";
-        if (card3010_) {
-            CxDeviceSetCard(card3010_, "close");
-            card3010_ = nullptr;
-        }
-        for (auto h : cards1073_)
-            CxDeviceSetCard(h, "close");
-        cards1073_.clear();
-        // SDK 保持初始化，不重新 deinit/init
-    } else {
+// ── 配置期望的卡集合 ─────────────────────────────────────────
+std::set<int> ModuleDAQ::expected1073Slots() const {
+    std::set<int> slots;
+    for (const auto& c : config_.cards)
+        if (c.card_type == "1073") slots.insert(c.slot);
+    return slots;
+}
+
+int ModuleDAQ::expected3010Slot() const {
+    for (const auto& c : config_.cards)
+        if (c.card_type == "3010") return c.slot;
+    return -1;
+}
+
+int ModuleDAQ::expected3010Count() const {
+    int n = 0;
+    for (const auto& c : config_.cards)
+        if (c.card_type == "3010") n++;
+    return n;
+}
+
+bool ModuleDAQ::cardSetMatchesOpen() const {
+    if (!hwReady_.load()) return false;
+    std::set<int> open;
+    for (auto h : cards1073_) {
+        uint32_t slot = 0;
+        CxDeviceGetCardSlotNo(h, &slot);
+        open.insert((int)slot);
+    }
+    int open3010 = -1;
+    if (card3010_) {
+        uint32_t slot = 0;
+        CxDeviceGetCardSlotNo(card3010_, &slot);
+        open3010 = (int)slot;
+    }
+    return open == expected1073Slots() && open3010 == expected3010Slot();
+}
+
+// ── 硬件初始化 / 重配（严格按配置 slot 打开）──────────────────
+bool ModuleDAQ::initHW(std::string& error) {
+    // 1) 先关闭已打开的卡（SDK 保持初始化）
+    if (card3010_) {
+        CxDeviceSetCard(card3010_, "close");
+        card3010_ = nullptr;
+    }
+    for (auto h : cards1073_)
+        CxDeviceSetCard(h, "close");
+    cards1073_.clear();
+    hwReady_ = false;
+    activeChCount_ = 0;
+
+    // 2) SDK 初始化（仅首次）
+    if (!sdkReady_) {
         std::cout << "[ModuleDAQ] Initializing SDK...\n";
         CxDeviceSetSdkOption("WithLog", "false");
         if (CxDeviceSdkInit() != 0) {
-            std::cerr << "[ModuleDAQ] SDK init failed\n";
+            error = "SDK 初始化失败";
             return false;
         }
+        sdkReady_ = true;
     }
 
+    // 3) 扫描机箱
     CxChassisHandle chassis = nullptr;
     CxCardHandle* hwCards = nullptr;
     uint32_t hwCount = 0;
@@ -520,47 +594,91 @@ bool ModuleDAQ::initHW() {
     CxDeviceGetCards(chassis, &hwCards, &hwCount);
     std::cout << "[ModuleDAQ] Found " << hwCount << " cards in chassis\n";
 
-    cards1073_.clear();
-    card3010_ = nullptr;
+    std::vector<std::pair<int, void*>> scanned1073;   // slot, handle
+    void* scanned3010 = nullptr;
+    int scanned3010Slot = -1;
     for (uint32_t i = 0; i < hwCount; i++) {
-        uint32_t did = 0;
+        uint32_t did = 0, slot = 0;
         CxDeviceGetCardDeviceId(hwCards[i], &did);
-        if (did == 0x1073)
-            cards1073_.push_back(hwCards[i]);
-        else if (did == 0x3010)
-            card3010_ = hwCards[i];
+        CxDeviceGetCardSlotNo(hwCards[i], &slot);
+        if (did == 0x1073) {
+            scanned1073.push_back({(int)slot, hwCards[i]});
+        } else if (did == 0x3010) {
+            scanned3010 = hwCards[i];
+            scanned3010Slot = (int)slot;
+        }
     }
-    std::cout << "[ModuleDAQ] " << cards1073_.size() << " x 1073, "
-              << (card3010_ ? 1 : 0) << " x 3010\n";
+    std::sort(scanned1073.begin(), scanned1073.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    scanned1073Slots_.clear();
+    for (auto& p : scanned1073) scanned1073Slots_.push_back(p.first);
+    scanned3010Slot_ = scanned3010Slot;
 
-    std::sort(cards1073_.begin(), cards1073_.end(), [](void* a, void* b) {
-        uint32_t sa = 0, sb = 0;
-        CxDeviceGetCardSlotNo(a, &sa);
-        CxDeviceGetCardSlotNo(b, &sb);
-        return sa < sb;
-    });
+    // 4) 配置期望集合校验（严格匹配，缺卡报错）
+    const auto exp1073 = expected1073Slots();
+    const int exp3010 = expected3010Slot();
+    const int n3010 = expected3010Count();
 
-    for (auto h : cards1073_) {
-        uint32_t slot = 0;
-        CxDeviceGetCardSlotNo(h, &slot);
-        CxDeviceSetCard(h, "open");
-        CxDeviceSetCard(h, "init");
+    if (exp1073.empty()) {
+        error = "配置中没有 1073 板卡（Cards 里需要 CardType=1073）";
+        return false;
+    }
+    if ((int)exp1073.size() > 4) {
+        error = "配置 1073 数量 " + std::to_string(exp1073.size()) +
+                " 超过上限 4（最多 4 卡 × 4 通道）";
+        return false;
+    }
+    if (n3010 > 1) {
+        error = "配置中 3010 卡数量 " + std::to_string(n3010) + " 超过上限 1";
+        return false;
+    }
+
+    std::set<int> scannedSet;
+    for (auto& p : scanned1073) scannedSet.insert(p.first);
+    std::vector<int> missing;
+    for (int s : exp1073)
+        if (!scannedSet.count(s)) missing.push_back(s);
+    if (!missing.empty()) {
+        error = "配置要求 1073 slot=" + joinInts(missing) +
+                "，机箱未找到（实际 1073 slots: " + joinInts(scanned1073Slots_) +
+                "，共 " + std::to_string(scanned1073.size()) + " 张）";
+        return false;
+    }
+    if (exp3010 >= 0 && scanned3010Slot < 0) {
+        error = "配置要求 3010 slot=" + std::to_string(exp3010) +
+                "，机箱未找到（实际 3010: 无）";
+        return false;
+    }
+
+    // 5) 只打开配置中的卡；机箱多余卡忽略
+    for (auto& p : scanned1073) {
+        int slot = p.first;
+        if (!exp1073.count(slot)) {
+            std::cout << "[ModuleDAQ] INFO: 忽略未配置的 1073 slot=" << slot << "\n";
+            continue;
+        }
+        CxDeviceSetCard(p.second, "open");
+        CxDeviceSetCard(p.second, "init");
         std::cout << "[ModuleDAQ] 1073 slot=" << slot << " init OK\n";
+        cards1073_.push_back(p.second);
     }
 
-    if (card3010_) {
-        CxDeviceSetCard(card3010_, "open");
-        CxDeviceSetCard(card3010_, "init");
-        std::cout << "[ModuleDAQ] 3010 init OK\n";
+    if (exp3010 >= 0) {
+        CxDeviceSetCard(scanned3010, "open");
+        CxDeviceSetCard(scanned3010, "init");
+        card3010_ = scanned3010;
+        std::cout << "[ModuleDAQ] 3010 slot=" << scanned3010Slot << " init OK\n";
     }
 
+    std::cout << "[ModuleDAQ] " << cards1073_.size() << " x 1073, "
+              << (card3010_ ? 1 : 0) << " x 3010 opened\n";
     hwReady_ = true;
     return true;
 }
 
 // ── 硬件关闭（进程退出时）─────────────────────────────────────
 bool ModuleDAQ::closeHW() {
-    if (!hwReady_.exchange(false)) return false;
+    if (!hwReady_.exchange(false) && !sdkReady_) return false;
 
     if (card3010_) {
         CxDeviceSetCard(card3010_, "close");
@@ -570,7 +688,10 @@ bool ModuleDAQ::closeHW() {
         CxDeviceSetCard(h, "close");
     cards1073_.clear();
 
-    CxDeviceSdkDeinit();
+    if (sdkReady_) {
+        CxDeviceSdkDeinit();
+        sdkReady_ = false;
+    }
     std::cout << "[ModuleDAQ] HW closed\n";
     return true;
 }
