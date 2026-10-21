@@ -30,6 +30,10 @@ DAQ / Process / Storage / WebUI 全链路支持。
 5. **通道编号**：按 JSON `Card#N` 顺序（现有行为，不改）；调换卡顺序会改变通道号
 6. **配置 UI**：仿原 Qt 程序——当前板卡下拉 + 3 按钮
    （① 保存当前通道 ② 保存当前板卡所有通道 ③ 保存机箱全部）
+   - 卡下拉来自配置文件（离线可编辑）；机箱扫描结果仅作提示显示
+   - **不做**加卡/删卡/一键补齐（保持精简）；多卡配置用预置模板
+     `config/app_initial_config_<N>card.json.bak` 覆盖 pending 后微调
+   - 配置文件安全：编辑仍走 `tmp+fsync+rename` 原子写；模板文件作为恢复点
 7. **机箱有但配置没有的卡**：不 open，日志提示忽略
 
 ## 关键流程
@@ -86,8 +90,26 @@ DAQ / Process / Storage / WebUI 全链路支持。
    记录 `last_start_error`
 3. `config_impl`：`RingSizeMB` 解析/序列化；mains 使用
 4. `module_process`：日志去 "4-channel" 硬编码
-5. `webui`：波形动态网格（4/8/12/16）；3 按钮；添加板卡 + 扫描 slot 提示
-6. 文档：`MSM_DAQ的定义.md`、`module_daq.md`、`README.md`、`AGENTS.md`
+5. `webui`：波形动态网格（4/8/12/16）；3 按钮；扫描 slot 提示；
+   **不做**加卡/删卡
+6. 多卡模板：`config/app_initial_config_{1,2,4}card.json.bak`（入库）
+7. 文档：`MSM_DAQ的定义.md`、`module_daq.md`、`README.md`、`AGENTS.md`
+
+## 多卡模板用法
+
+预置 1/2/4 卡配置模板（`config/app_initial_config_*card.json.bak`），
+切换卡数时无需改代码：
+
+```bash
+cp config/app_initial_config_2card.json.bak config/app_pending_config.json
+# 按机箱实际 slot 改 Cards 里各卡的 "Slot"，再在 WebUI 点 Start
+```
+
+- 模板里的 `Slot` 是占位值（2 卡：3/5；4 卡：3/5/7/9），
+  必须与机箱实际 slot 一致，否则 Init 会报错并列出「配置 vs 扫描」结果
+- 3010 卡（`Card#3010`, slot 10）在模板里已保留；不需要时整块删掉即可
+- 覆盖前建议先备份当前 pending：
+  `cp config/app_pending_config.json config/app_pending_config.$(date +%s).bak`
 
 ## 测试
 
@@ -99,7 +121,11 @@ DAQ / Process / Storage / WebUI 全链路支持。
 ## 风险
 
 - 4 卡 4GB ring 内存 → `RingSizeMB` 可配
-- 单 3010 触发多卡依赖背板 `SyncTrigGlbSync`，需真机验证对齐
+- 单 3010 触发多卡：通道 TrigSource 必须为 global(4)，3010 触发经背板
+  广播（已真机验证 2 卡对齐；注意 3010 的 `SyncTrigTrigMux`/`SyncTrigGlbSync`
+  在 PXIeV1 固件上不是有效配置项，实际生效的是 `TrigSource`/`SoftwareSync`）
 - 调换 JSON 卡顺序会改变通道号（已确认接受）
-- add-card 需枚举机箱 slot（DAQ Status 暴露扫描摘要）
-- 卡片集合变更触发 close+reopen（秒级，比热重配慢）
+- 模板 `Slot` 为占位值，需按机箱实际 slot 修改，否则 Init 严格校验报错
+- 卡集合变更（增/减卡）：Init 明确报错「启用通道数变化」，需重启进程
+  （ring/Process/Storage 通道数进程启动时固定；原设计里的 close+reopen
+  只覆盖硬件层，下游管线不支持运行中扩容）

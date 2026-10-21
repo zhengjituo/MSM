@@ -75,6 +75,10 @@ MSM_DAQ/
   - 命令：`start` / `stop` / `enablesave` / `disablesave` / `status` / `quit`
     （reload 已移除，task 017：配置经 pending→runtime 于每次 Start 时生效，
     设计见 `docs/superpowers/specs/2026-08-19-config-pending-chain-design.md`）
+  - 多卡（task 018，最多 4×1073 = 16ch）：严格 slot 匹配；Start 失败原因写入
+    Controller 变量 `last_start_error`；ring 大小 `app_config.RingSizeMB`
+    （默认 256MB）；多卡模板 `config/app_initial_config_{1,2,4}card.json.bak`
+    覆盖 pending 后按机箱实际 slot 改 `Slot` 即可
 - **main_webui** — 稳定。内嵌完整后端 + Web GUI（SSE 状态/特征/波形、ECharts）
   - Config 面板编辑 `app_pending_config.json`；首次启动无 pending 时从 initial 播种
   - Start 由后端自主完成 pending→runtime 交接并重配硬件；无 reload 按钮/API

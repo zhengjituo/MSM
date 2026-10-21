@@ -84,19 +84,20 @@ webui 原生 HTML/JS。
 3. echarts 实例按需初始化 / resize / dispose
 4. 通道数变化（换配置）时重建
 
-### Task 6: 配置面板 3 按钮 + 添加板卡
+### Task 6: 配置面板 3 按钮 + 多卡模板（精简版）
 
 **Files:**
 - Modify: `main_webui/web/msm_daq_hw.html`
-- Modify: `module_config/config_editor_module.cpp`（AddCard）
-- Modify: `main_webui/main_hwdaq.cpp`（/api/config/add-card）
+- Create: `config/app_initial_config_1card.json.bak` / `_2card.json.bak` / `_4card.json.bak`
+- Modify: `docs/` 说明（模板用法）
 
 **要点:**
 1. 第二个按钮 `保存当前板卡所有通道`（scope=card，后端已有）
-2. `AddCard(slot, type=1073)`：复制首张 1073 卡的 4 通道参数模板，
-   新 CardIndex、新 slot，追加到 Cards
-3. 面板显示机箱实际 slots（来自 DAQ 扫描摘要），便于填写 slot
-4. 保存后提示"下次 Start 生效"
+2. 面板显示机箱实际 slots（来自 DAQ 扫描摘要），便于核对配置
+3. **不做**加卡/删卡/一键补齐
+4. 预置 1/2/4 卡模板（`*.json.bak`），覆盖 pending 后按需改 slot；
+   模板内 CardIndex/Slot 明确标注需按机箱实际修改
+5. 配置写入仍为原子写，模板兼作恢复点
 
 ### Task 7: 编译 + 仿真多卡验证 + 文档
 
