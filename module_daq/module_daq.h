@@ -30,6 +30,16 @@ public:
     int getRingCount() const { return (int)rings_.size(); }
     bool isConfigured() const { return configured_.load(); }
     bool isHwReady() const { return hwReady_.load(); }
+    bool isInitFailed() const { return initFailed_.load(); }
+    std::string initError() const {
+        std::lock_guard<std::mutex> lk(initErrMtx_);
+        return initError_;
+    }
+    void setInitFailed(bool failed, const std::string& err) {
+        initFailed_.store(failed);
+        std::lock_guard<std::mutex> lk(initErrMtx_);
+        initError_ = err;
+    }
 
     struct Stats {
         std::vector<int64_t> total_frames;
@@ -80,6 +90,9 @@ private:
     std::vector<UserCircularBuffer*> rings_;
 
     std::atomic<bool> hwReady_{false};
+    std::atomic<bool> initFailed_{false};
+    mutable std::mutex initErrMtx_;
+    std::string initError_;
     std::atomic<bool> acquiring_{false};
     std::atomic<bool> emergencyStop_{false};
     std::atomic<bool> configured_{false};

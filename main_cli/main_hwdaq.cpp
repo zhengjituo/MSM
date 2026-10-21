@@ -48,6 +48,14 @@ static void send(const std::string& niString) {
     msm::MessageBus::instance().send(msg);
 }
 
+static int countEnabledChannels(const ConfigImpl& cfg) {
+    int n = 0;
+    for (const auto& card : cfg.cards)
+        for (const auto& ch : card.channels)
+            if (ch.runEnable) n++;
+    return n;
+}
+
 class ControllerModule : public msm::Module {
 public:
     ControllerModule() : Module("Controller") {
@@ -161,6 +169,13 @@ int main() {
             return;
         }
         const auto& cfg2 = configModule.config();
+        int nChNew = countEnabledChannels(cfg2);
+        if (nChNew != daq.getRingCount()) {
+            failStart("启用通道数变化（" + std::to_string(daq.getRingCount()) + "→" +
+                      std::to_string(nChNew) +
+                      "）：管线通道数固定，卡集合变更后请重启进程");
+            return;
+        }
         msm::Message daqInit("Init");
         daqInit.data.data = cfg2.toKeyValues();
         daqInit.setTarget("DAQModule");
@@ -223,8 +238,16 @@ int main() {
         msm::MessageBus::instance().send(dist);
     }
 
-    while (!daq.isHwReady())
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // 等首次 Init 完成（成功或失败）；失败不死等 —— 进程保持存活，
+    // 用户修正配置后 start 会重新 initHW
+    for (int i = 0; i < 600 && !daq.isHwReady(); i++) {
+        if (daq.isInitFailed()) {
+            std::cerr << "[main] DAQ Init 失败: " << daq.initError()
+                      << "（进程保持存活，修正配置后可 start 重试）\n";
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 
     std::cout << "[main] DAQ ready: " << daq.getRingCount() << " rings\n";
 

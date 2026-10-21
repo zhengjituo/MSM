@@ -158,7 +158,8 @@ bool ConfigImpl::loadFromJsonString(const std::string& json) {
             auto ch_blocks = splitKeyedObjects(ch_brace);
             for (const auto& chb : ch_blocks) {
                 ChannelConfig ch;
-                ch.runEnable = findValue(chb, "runEnable") == "true" || findInt(chb, "runEnable", 1) != 0;
+                ch.runEnable = findValue(chb, "runEnable") == "true" ||
+                               findValue(chb, "runEnable") == "1";
                 ch.channel = findInt(chb, "channel", 1);
                 ch.cardIndex = findInt(chb, "cardIndex", card.card_index);
                 ch.slot = findInt(chb, "slot", card.slot);

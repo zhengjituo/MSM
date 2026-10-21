@@ -35,6 +35,17 @@ static int mapWorkMode(const std::string& mode) {
     return (it != m.end()) ? it->second : 0;
 }
 
+// TrigSource 字符串 → SDK 数值（SDK 只认数字，传名字会 StringToUint32 失败）
+// 多卡时必须每张卡都是 global(4)：3010 的触发经背板广播给所有 1073，帧号才同步
+static std::string mapTrigSource(const std::string& v) {
+    static const std::unordered_map<std::string, std::string> m = {
+        {"localChannel", "1"}, {"localBoard", "2"}, {"global", "4"},
+        {"external", "8"}, {"force", "16"}, {"cycle", "32"}
+    };
+    auto it = m.find(v);
+    return (it != m.end()) ? it->second : v;   // 数字原样透传
+}
+
 
 ModuleDAQ::ModuleDAQ()
     : Module("DAQModule")
@@ -94,6 +105,9 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
             ok = false;
             err = "无活动通道（检查配置 runEnable 与通道数）";
         }
+        if (!ok)
+            std::cerr << "[ModuleDAQ] Init failed: " << err << "\n";
+        setInitFailed(!ok, ok ? "" : err);
         // 回 Response：start 链据 status 判断是否继续
         if (!msg.getSender().empty()) {
             msm::Message response("Response");
@@ -289,7 +303,7 @@ bool ModuleDAQ::updateConfig() {
 
             int ch = chCfg.channel;
             CxDeviceSetChannelValue(hCard, ch, "GlobalTrigEnable", "1");
-            CxDeviceSetChannelValue(hCard, ch, "TrigSource", chCfg.trig_source.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigSource", mapTrigSource(chCfg.trig_source).c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigMode", chCfg.trig_mode.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigLength", chCfg.trig_length.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigPulseWidth", chCfg.trig_pulse_width.c_str());
@@ -300,7 +314,8 @@ bool ModuleDAQ::updateConfig() {
             CxDeviceSetChannelValue(hCard, ch, "TrigPosition", chCfg.trig_position.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigWindowStart", chCfg.trig_window_start.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime",
-                std::to_string(config_.trig_delay_time_fix + std::stoi(chCfg.trig_delay_time)).c_str());
+                std::to_string(config_.trig_delay_time_fix +
+                    (chCfg.trig_delay_time.empty() ? 0 : std::stoi(chCfg.trig_delay_time))).c_str());
             CxDeviceSetChannelValue(hCard, ch, "ExternalTrigPolarity", chCfg.external_trig_polarity.c_str());
             CxDeviceSetChannelValue(hCard, ch, "DeadTime", chCfg.dead_time.c_str());
             CxDeviceSetChannelValue(hCard, ch, "FiniteTrigNum", chCfg.finite_trig_num.c_str());
@@ -336,6 +351,15 @@ bool ModuleDAQ::updateConfig() {
             }
             std::cout << "[ModuleDAQ]   ch" << ch << " configured\n";
 
+            // ring 数量由 main 按进程启动时的配置创建，不支持运行中扩卡；
+            // 越界会变成野指针写崩，这里明确报错
+            if (activeChCount_ >= (int)rings_.size()) {
+                std::cerr << "[ModuleDAQ] ERROR: ring 数量不足（"
+                          << activeChCount_ + 1 << "/" << rings_.size()
+                          << "）：启用通道数超过进程启动时的通道数，"
+                          "卡集合变更后请重启进程\n";
+                return false;
+            }
             auto& slot = activeChannels_[activeChCount_++];
             slot.cardHandle = hCard;
             slot.ch = ch;
@@ -576,6 +600,7 @@ bool ModuleDAQ::initHW(std::string& error) {
     activeChCount_ = 0;
 
     // 2) SDK 初始化（仅首次）
+    bool sdkWasReady = sdkReady_;
     if (!sdkReady_) {
         std::cout << "[ModuleDAQ] Initializing SDK...\n";
         CxDeviceSetSdkOption("WithLog", "false");
@@ -593,6 +618,18 @@ bool ModuleDAQ::initHW(std::string& error) {
     CxDeviceGetChassis(PXIe, &chassis);
     CxDeviceGetCards(chassis, &hwCards, &hwCount);
     std::cout << "[ModuleDAQ] Found " << hwCount << " cards in chassis\n";
+
+    // 首次初始化：全卡 open → reset → close
+    // 上次进程异常退出（崩溃/被 kill）会留下脏的触发/DMA 状态，
+    // 表现为后续 Start 只收到一个接收缓冲的量甚至 0 帧
+    if (!sdkWasReady) {
+        for (uint32_t i = 0; i < hwCount; i++) {
+            CxDeviceSetCard(hwCards[i], "open");
+            CxDeviceResetCard(hwCards[i]);
+            CxDeviceSetCard(hwCards[i], "close");
+        }
+        std::cout << "[ModuleDAQ] all " << hwCount << " card(s) reset (清残留状态)\n";
+    }
 
     std::vector<std::pair<int, void*>> scanned1073;   // slot, handle
     void* scanned3010 = nullptr;
