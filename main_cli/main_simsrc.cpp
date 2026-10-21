@@ -14,6 +14,8 @@
 #include <memory>
 #include <fstream>
 #include <iomanip>
+#include <mutex>
+#include <string>
 
 #include "config_handoff.h"
 
@@ -23,6 +25,22 @@ static void handle_signal(int) {
     g_stop.store(true);
 }
 
+// 最近一次 Start 失败原因（供状态查询/UI 展示）
+static std::mutex g_startErrMtx;
+static std::string g_lastStartError;
+static std::string getStartError() {
+    std::lock_guard<std::mutex> lk(g_startErrMtx);
+    return g_lastStartError;
+}
+static void failStart(const std::string& err) {
+    { std::lock_guard<std::mutex> lk(g_startErrMtx); g_lastStartError = err; }
+    std::cerr << "[main] start FAILED: " << err << "\n";
+}
+static void clearStartError() {
+    std::lock_guard<std::mutex> lk(g_startErrMtx);
+    g_lastStartError.clear();
+}
+
 static void send(const std::string& niString) {
     msm::Message msg = msm::NIStringParser::parse(niString, "Main");
     msm::MessageBus::instance().send(msg);
@@ -30,7 +48,10 @@ static void send(const std::string& niString) {
 
 class ControllerModule : public msm::Module {
 public:
-    ControllerModule() : Module("Controller") {}
+    ControllerModule() : Module("Controller") {
+        vars_.declare("last_start_error", "string",
+                      []() { return getStartError(); }, nullptr, "o");
+    }
     void handleState(const msm::Message& msg) override {
         if (msg.cmd == "Quit") {
             g_stop.store(true);
@@ -100,9 +121,12 @@ int main() {
 
     size_t frameSize = cfg.frame_size;
     if (frameSize == 0) frameSize = 1152;
+    const size_t ringBytes = cfg.ring_size_mb * 1024U * 1024U;
+    std::cout << "[main] rings: " << nCh << " x " << cfg.ring_size_mb << "MB"
+              << " (RingSizeMB)\n";
     std::vector<UserCircularBuffer*> simRings;
     for (int i = 0; i < nCh; i++)
-        simRings.push_back(new UserCircularBuffer(256U * 1024U * 1024U, frameSize));
+        simRings.push_back(new UserCircularBuffer(ringBytes, frameSize));
 
     ModuleSim sim;
     sim.setRings(simRings);
@@ -144,11 +168,11 @@ int main() {
         if (g_stop.load()) return;
         std::cout << "[main] start: reload config -> configure sim -> start\n";
         if (ensureRuntimeConfig(g_initConfigPath, g_pendingConfigPath, g_runtimeConfigPath) != 0) {
-            std::cerr << "[main] start: ensure runtime config failed\n";
+            failStart("配置交接失败（pending → runtime）");
             return;
         }
         if (!configModule.config().loadFromJson(g_runtimeConfigPath)) {
-            std::cerr << "[main] start: reload " << g_runtimeConfigPath << " failed\n";
+            failStart("配置加载失败: " + g_runtimeConfigPath);
             return;
         }
         const auto& cfg2 = configModule.config();
@@ -167,8 +191,17 @@ int main() {
         simCfg.data.set("WaveDataEnable", waveData);
         simCfg.data.set("FramesPerCycle", 10000);
         simCfg.data.set("TriggerRateHz", 100000);
-        msm::MessageBus::instance().send(simCfg);
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        msm::Message resp = msm::MessageBus::instance().sendAndWait(simCfg, 5000);
+        if (resp.cmd == "Timeout") {
+            failStart("模拟源配置超时（5s）");
+            return;
+        }
+        if (resp.data.get("status") != "ok") {
+            std::string e = resp.data.get("error");
+            failStart(e.empty() ? "模拟源配置失败" : e);
+            return;
+        }
+        clearStartError();
         send("Start >> -@ Storage");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         send("Start >> -@ Process");

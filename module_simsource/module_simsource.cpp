@@ -83,6 +83,13 @@ void ModuleSim::handleState(const msm::Message& msg) {
 
     } else if (msg.cmd == "Configure") {
         onConfigure(msg.data);
+        if (!msg.getSender().empty()) {
+            msm::Message response("Response");
+            response.setTarget(msg.getSender());
+            response.setCorrelationId(msg.getCorrelationId());
+            response.data.set("status", "ok");
+            msm::MessageBus::instance().send(response);
+        }
     } else if (msg.cmd == "Start") {
         onStart();
     } else if (msg.cmd == "Stop") {
