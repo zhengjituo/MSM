@@ -6,6 +6,8 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <time.h>
+#include <sys/time.h>
 
 static const char kB64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static std::string base64Encode(const void* data, size_t len) {
@@ -479,6 +481,15 @@ void ModuleProcess::doConsumeOnce() {
     }
 
     // Print per-channel log line (first frame bunch_id)
+    std::string ts;
+    if (getenv("MSM_DAQ_TS")) {
+        char tb[32];
+        time_t tw = time(nullptr);
+        struct tm lt; localtime_r(&tw, &lt);
+        struct timeval tv; gettimeofday(&tv, nullptr);
+        strftime(tb, sizeof(tb), "%H:%M:%S", &lt);
+        ts = std::string("[ts ") + tb + "." + std::to_string(tv.tv_usec / 1000) + "] ";
+    }
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
         uint64_t fb = 0;
@@ -487,7 +498,7 @@ void ModuleProcess::doConsumeOnce() {
             fb = readU48BE(ff + flen - TRAILER_SIZE + 2);
         }
         int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
-        std::cout << "[" << name_ << "] ch" << chPhys
+        std::cout << ts << "[" << name_ << "] ch" << chPhys
                   << " batch=" << curBatch
                   << " first_bunch_id=" << fb
                   << " idx=" << selIdx
@@ -497,7 +508,7 @@ void ModuleProcess::doConsumeOnce() {
 
     // Print feature table (nCh_ 通道，动态)
     {
-        std::cout << "[" << name_ << "] batch=" << curBatch
+        std::cout << ts << "[" << name_ << "] batch=" << curBatch
                   << " frame_idx=" << selIdx << " step=" << bunchIdStep_ << "\n";
         auto printRow = [&](const char* label, std::vector<double> BatchFrameData::*field) {
             std::cout << "  " << label;
