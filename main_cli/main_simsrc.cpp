@@ -57,6 +57,12 @@ public:
             g_stop.store(true);
         } else if (msg.cmd == "Start" && g_startFn) {
             g_startFn();
+        } else if (msg.cmd == "Status") {
+            msm::Message response("Response");
+            response.setTarget(msg.getSender());
+            response.setCorrelationId(msg.getCorrelationId());
+            response.data.set("last_start_error", getStartError());
+            msm::MessageBus::instance().send(response);
         }
     }
     msm::ModuleVars* getVars() override { return &tableVars_; }

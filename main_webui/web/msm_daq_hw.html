@@ -95,16 +95,12 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
 
 <div id="waveSection" style="display:none">
   <h2>Waveform <span style="font-size:12px;color:#606080" id="waveMeta"></span></h2>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div id="chart0" style="height:180px;width:100%;min-width:0"></div>
-    <div id="chart1" style="height:180px;width:100%;min-width:0"></div>
-    <div id="chart2" style="height:180px;width:100%;min-width:0"></div>
-    <div id="chart3" style="height:180px;width:100%;min-width:0"></div>
-  </div>
+  <div id="waveGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
 </div>
 
 <div id="statusBar">
   <span id="statusText">connecting...</span>
+  <span id="startErr" style="color:#e04a4a"></span>
   <span id="chCount"></span>
   <span id="updateTime"></span>
 </div>
@@ -112,6 +108,7 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
     <span style="font-weight:600;">Config</span>
     <span id="cfgVersion" style="color:#a0a0b0; font-size:12px;"></span>
+    <span id="cfgScanned" style="color:#7ab0ff; font-size:12px;"></span>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('channel')">保存当前通道</button>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('card')">保存本卡全部通道</button>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('chassis')">保存机箱全部 1073 通道</button>
@@ -228,6 +225,24 @@ function render(d) {
   document.getElementById('btnStop').disabled = !backendRunning || !d.running;
 
   document.getElementById('saveCheck').checked = d.save_enabled;
+
+  // 机箱扫描摘要（配置面板参考）+ 最近一次 Start 失败原因
+  const sc = document.getElementById('cfgScanned');
+  if (sc) {
+    sc.textContent = d.scanned_1073_slots
+      ? '机箱扫描: 1073 slots [' + d.scanned_1073_slots + ']'
+        + (d.scanned_3010_slot >= 0 ? ' · 3010 slot ' + d.scanned_3010_slot : ' · 3010 无')
+      : '';
+  }
+  const se = document.getElementById('startErr');
+  if (se) se.textContent = d.last_start_error ? ('启动失败: ' + d.last_start_error) : '';
+
+  // 通道数变化 → 波形网格跟随（4/8/12/16）
+  lastChannelCount = (d.channels || []).length || lastChannelCount;
+  if (document.getElementById('waveSection').style.display !== 'none'
+      && charts.length !== (lastChannelCount || 4)) {
+    ensureCharts(lastChannelCount || 4);
+  }
 
   // Channel summary
   const tbody = document.getElementById('chTable');
@@ -527,7 +542,45 @@ let waveTimer = null;
 const POW20 = 1048576.0;
 const FFFF = 65535.0;
 const charts = [];
+let lastChannelCount = 0;
 const CHART_COLORS = ['#4ae0a0', '#f0a030', '#e04a4a', '#00d4ff'];
+
+// 按通道数动态建/删波形图（4/8/12/16）
+function ensureCharts(n) {
+  if (!n || n <= 0) n = 4;
+  const grid = document.getElementById('waveGrid');
+  if (!grid) return;
+  if (charts.length === n && document.getElementById('chart0')) {
+    for (let i = 0; i < n; i++) {
+      charts[i] = charts[i] || initChart('chart' + i, i);
+      charts[i] && charts[i].resize();
+    }
+    return;
+  }
+  grid.style.gridTemplateColumns = 'repeat(' + (n <= 4 ? 2 : 4) + ',1fr)';
+  for (let i = n; i < charts.length; i++) {
+    if (charts[i]) { charts[i].dispose(); charts[i] = null; }
+    const old = document.getElementById('chart' + i);
+    if (old) old.remove();
+  }
+  charts.length = n;
+  for (let i = 0; i < n; i++) {
+    let el = document.getElementById('chart' + i);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'chart' + i;
+      el.style.cssText = 'height:180px;width:100%;min-width:0';
+      grid.appendChild(el);
+    }
+  }
+  requestAnimationFrame(() => {
+    for (let i = 0; i < n; i++) {
+      charts[i] = charts[i] || initChart('chart' + i, i);
+      charts[i] && charts[i].resize();
+    }
+  });
+}
+
 
 function initChart(divId, chIdx) {
   const el = document.getElementById(divId);
@@ -577,12 +630,7 @@ document.getElementById('waveCheck').addEventListener('change', function() {
   const on = this.checked;
   document.getElementById('waveSection').style.display = on ? 'block' : 'none';
   if (on) {
-    requestAnimationFrame(() => {
-      for (let i = 0; i < 4; i++) {
-        charts[i] = charts[i] || initChart('chart' + i, i);
-        charts[i] && charts[i].resize();
-      }
-    });
+    ensureCharts(lastChannelCount || 4);
     if (!waveTimer) {
       waveTimer = setInterval(fetchWaveform, 1000);
       fetchWaveform();

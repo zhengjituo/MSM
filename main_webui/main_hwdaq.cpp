@@ -223,6 +223,10 @@ struct AppSnapshot {
     std::string backendMode;
     int backendPid = 0;
     std::string backendStatusStr;
+    // 机箱扫描摘要 + 最近一次 Start 失败原因
+    std::string scanned1073Slots;
+    int scanned3010Slot = -1;
+    std::string startError;
 };
 static AppSnapshot g_snap;
 static msm::ConfigEditorModule g_configEditor;
@@ -241,10 +245,14 @@ static int64_t parseInt64(const json& j, const std::string& key) {
     try { return std::stoll(j.value(key, "0")); } catch (...) { return 0; }
 }
 
-static AppSnapshot parseSnapshot(json& daqJ, json& procJ, json& storJ, bool saveEnabled) {
+static AppSnapshot parseSnapshot(json& daqJ, json& procJ, json& storJ, bool saveEnabled,
+                                 json* ctrlJ = nullptr) {
     AppSnapshot snap;
     snap.saveEnabled = saveEnabled;
     snap.running = daqJ.value("running", "false") == "true";
+    snap.scanned1073Slots = daqJ.value("scanned_1073_slots", "");
+    try { snap.scanned3010Slot = std::stoi(daqJ.value("scanned_3010_slot", "-1")); } catch (...) {}
+    if (ctrlJ) snap.startError = ctrlJ->value("last_start_error", "");
 
     int nCh = 0;
     for (int i = 0; i < 16; i++) {
@@ -315,6 +323,9 @@ static std::string buildSseData(const AppSnapshot& snap) {
     o << ",\"backend_pid\":" << snap.backendPid;
     o << ",\"backend_mode\":\"" << snap.backendMode << "\"";
     o << ",\"backend_status\":\"" << snap.backendStatusStr << "\"";
+    o << ",\"scanned_1073_slots\":\"" << snap.scanned1073Slots << "\"";
+    o << ",\"scanned_3010_slot\":" << snap.scanned3010Slot;
+    o << ",\"last_start_error\":\"" << snap.startError << "\"";
     o << ",\"channels\":[";
     for (int i = 0; i < snap.channels; i++) {
         if (i > 0) o << ",";
@@ -659,21 +670,23 @@ int main() {
     // Poll loop
     while (!g_stop.load()) {
         checkChild();
-        json daqJ, procJ, storJ;
+        json daqJ, procJ, storJ, ctrlJ;
 
         std::string dr = ipc.send("MSG Status >> -@ DAQModule");
         std::string pr = ipc.send("MSG Status >> -@ Process");
         std::string sr = ipc.send("MSG Status >> -@ Storage");
+        std::string cr = ipc.send("MSG Status >> -@ Controller");
         try { daqJ = json::parse(dr); } catch (...) {}
         try { procJ = json::parse(pr); } catch (...) {}
         try { storJ = json::parse(sr); } catch (...) {}
+        try { ctrlJ = json::parse(cr); } catch (...) {}
 
         json statusOnly; statusOnly["status"] = "timeout";
         if (daqJ.empty()) daqJ = statusOnly;
         if (procJ.empty()) procJ = statusOnly;
         if (storJ.empty()) storJ = statusOnly;
 
-        AppSnapshot snap = parseSnapshot(daqJ, procJ, storJ, saveEnabled);
+        AppSnapshot snap = parseSnapshot(daqJ, procJ, storJ, saveEnabled, &ctrlJ);
         {
             std::lock_guard<std::mutex> lock(g_snapMtx);
             g_snap = snap;
