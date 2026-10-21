@@ -12,7 +12,7 @@ ce2d63b  fix(core): IPCServer stop 时 FD_SET(-1) abort（既有 bug）
 efaa0b8  T5/T6 feat(webui): 动态波形网格 + 扫描 slot 提示 + 启动错误显示
 37ac93b  T6 feat(config): 1/2/4 卡配置模板（*.json.bak 入库）
 8849442  T7 fix(daq): 真机验证修复（TrigSource 映射/清脏状态/错误路径/卡数变化）
-bc0f703  T7 docs: 真机验证结果 + 同步要点 + 卡数变更限制
+a2ea90a  T7 docs: 真机验证结果 + 同步要点 + 卡数变更限制
 ```
 > 回退：`git reset --hard 4fee053`。分支：`feat/multi-card`（主仓库内）。
 
