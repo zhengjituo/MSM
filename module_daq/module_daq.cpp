@@ -76,6 +76,7 @@ ModuleDAQ::Stats ModuleDAQ::getStats() const {
         s.overflow_count.push_back(slot.ring ? slot.ring->getOverflowCount() : 0);
         s.frame_size.push_back(slot.frameSize.load());
         s.channel_ids.push_back(slot.ch);
+        s.slots.push_back(slot.slot);
     }
     return s;
 }
@@ -363,6 +364,7 @@ bool ModuleDAQ::updateConfig() {
             auto& slot = activeChannels_[activeChCount_++];
             slot.cardHandle = hCard;
             slot.ch = ch;
+            slot.slot = cardCfg.slot;
             slot.ring = rings_[activeChCount_ - 1];
             slot.totalFrames.store(0);
             slot.frameSize.store(0);
@@ -459,6 +461,8 @@ void ModuleDAQ::onStatus(msm::Message& response) {
                           std::to_string(s.overflow_count[i]));
         response.data.set("ch" + std::to_string(i + 1) + "_frame_size",
                           std::to_string(s.frame_size[i]));
+        response.data.set("ch" + std::to_string(i + 1) + "_slot",
+                          std::to_string(s.slots[i]));
     }
     response.data.set("running", s.is_running ? "true" : "false");
     // 最近一次机箱扫描结果（多卡配置/排障用）

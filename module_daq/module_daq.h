@@ -46,6 +46,7 @@ public:
         std::vector<size_t> overflow_count;
         std::vector<size_t> frame_size;
         std::vector<int> channel_ids;
+        std::vector<int> slots;      // 每通道所在机箱卡槽（-1 未知）
         bool is_running = false;
     };
     Stats getStats() const;
@@ -54,6 +55,7 @@ private:
     struct ChSlot {
         void* cardHandle = nullptr;
         int ch = 1;
+        int slot = -1;               // 机箱卡槽（来自配置，UI 按卡分组用）
         UserCircularBuffer* ring = nullptr;
         std::atomic<int64_t> totalFrames{0};
         std::atomic<size_t> frameSize{0};

@@ -207,6 +207,7 @@ struct ChannelStatus {
     int64_t proc_frames = 0;
     int64_t proc_batches = 0;
     int64_t saved_frames = 0;
+    int slot = -1;   // 机箱卡槽（-1 = 后端未提供，如 sim）
 };
 
 struct AppSnapshot {
@@ -269,6 +270,7 @@ static AppSnapshot parseSnapshot(json& daqJ, json& procJ, json& storJ, bool save
         c.proc_frames = std::stoll(procJ.value(pk, "0"));
         c.proc_batches = std::stoll(procJ.value(pb, "0"));
         c.saved_frames = std::stoll(storJ.value(sk, "0"));
+        try { c.slot = std::stoi(daqJ.value("ch" + idx + "_slot", "-1")); } catch (...) {}
     }
     snap.channels = nCh;
 
@@ -332,6 +334,7 @@ static std::string buildSseData(const AppSnapshot& snap) {
         auto& c = snap.ch[i];
         o << "{";
         o << "\"ch\":" << (i + 1);
+        o << ",\"slot\":" << c.slot;
         o << ",\"daq_frames\":" << c.daq_frames;
         o << ",\"proc_frames\":" << c.proc_frames;
         o << ",\"proc_batches\":" << c.proc_batches;

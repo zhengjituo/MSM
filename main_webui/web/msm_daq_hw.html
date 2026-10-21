@@ -38,6 +38,14 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
 #statusBar { margin-top: 12px; font-size: 12px; color: #606080; display: flex; gap: 16px; align-items: center; }
 #toast { position: fixed; bottom: 20px; right: 20px; background: #0a0a1a; border: 1px solid #00d4ff; border-radius: 6px; padding: 8px 14px; font-size: 12px; color: #00d4ff; opacity: 0; transition: opacity .3s; pointer-events: none; }
 #toast.show { opacity: 1; }
+tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-align: left; }
+#featWrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 10px; align-items: start; }
+.featCard { border: 1px solid #0f3460; border-radius: 6px; padding: 8px; }
+.featCardTitle { font-size: 12px; color: #7ab0ff; font-weight: 600; margin-bottom: 4px; }
+.featCard table { margin-bottom: 0; }
+.cardWave { margin-bottom: 4px; }
+.cardWaveTitle { font-size: 12px; color: #7ab0ff; font-weight: 600; margin: 4px 0; }
+.cardWaveGrid { display: grid; gap: 8px; }
 </style>
 </head>
 <body>
@@ -88,10 +96,7 @@ hr { border: none; border-top: 1px solid #0f3460; margin: 14px 0; }
   <input class="idx-input" id="idxInput" type="number" min="-1" max="9999" value="-1" title="-1 = auto align">
   <button class="btn btn-reload" onclick="setFrameIndex()" style="padding:4px 10px;font-size:12px">Set</button>
 </div>
-<table>
-  <thead><tr id="featHeader"></tr></thead>
-  <tbody id="featBody"></tbody>
-</table>
+<div id="featWrap"></div>
 
 <div id="waveSection" style="display:none">
   <h2>Waveform <span style="font-size:12px;color:#606080" id="waveMeta"></span></h2>
@@ -237,23 +242,40 @@ function render(d) {
   const se = document.getElementById('startErr');
   if (se) se.textContent = d.last_start_error ? ('启动失败: ' + d.last_start_error) : '';
 
-  // 通道数变化 → 波形网格跟随（4/8/12/16）
+  // 通道数/卡槽布局变化 → 波形网格按卡跟随（4/8/12/16）
   lastChannelCount = (d.channels || []).length || lastChannelCount;
+  lastSlots = (d.channels || []).map(c => (c.slot === undefined ? -1 : c.slot));
   if (document.getElementById('waveSection').style.display !== 'none'
-      && charts.length !== (lastChannelCount || 4)) {
-    ensureCharts(lastChannelCount || 4);
+      && lastSlots.length > 0
+      && (lastWaveSig !== lastSlots.join(',') || charts.length !== lastSlots.length)) {
+    ensureCharts(lastSlots);
   }
 
-  // Channel summary
+  // Channel summary（多卡时按卡分组，带卡槽表头行）
   const tbody = document.getElementById('chTable');
+  const chs = d.channels || [];
   let html = '';
-  for (let i = 0; i < (d.channels || []).length; i++) {
-    const ch = d.channels[i];
-    html += '<tr><td>CH' + (i+1) + '</td>'
-         + '<td>' + (ch.daq_frames || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.proc_frames || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.proc_batches || 0).toLocaleString() + '</td>'
-         + '<td>' + (ch.saved_frames || 0).toLocaleString() + '</td></tr>';
+  let i = 0, cardNo = 0;
+  while (i < chs.length) {
+    const slot = chs[i].slot;
+    const grouped = (slot !== undefined && slot >= 0);
+    let j = i;
+    if (grouped) {
+      while (j < chs.length && chs[j].slot === slot) j++;
+      cardNo++;
+      html += '<tr class="cardrow"><td colspan="5">Card#' + cardNo + ' · slot ' + slot + '</td></tr>';
+    } else {
+      j = chs.length;
+    }
+    for (let k = i; k < j; k++) {
+      const ch = chs[k];
+      html += '<tr><td>CH' + (k+1) + '</td>'
+           + '<td>' + (ch.daq_frames || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.proc_frames || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.proc_batches || 0).toLocaleString() + '</td>'
+           + '<td>' + (ch.saved_frames || 0).toLocaleString() + '</td></tr>';
+    }
+    i = j;
   }
   tbody.innerHTML = html;
 
@@ -277,33 +299,49 @@ function render(d) {
 
   const feat = d.features || [];
   const nCh = feat.length;
-  const header = document.getElementById('featHeader');
-  let hhtml = '<th>Feature</th>';
-  for (let i = 0; i < nCh; i++) hhtml += '<th>CH' + (i+1) + '</th>';
-  header.innerHTML = hhtml;
-
-  const body = document.getElementById('featBody');
-  let bhtml = '';
+  const chs2 = d.channels || [];
+  const wrap = document.getElementById('featWrap');
+  let fhtml = '';
   if (d.has_feature && nCh > 0) {
-    for (const [key, label] of FEATURE_LABELS) {
-      bhtml += '<tr><td>' + label + '</td>';
-      for (let i = 0; i < nCh; i++) {
-        let v = feat[i][key];
-        if (key === 'bunch_id') {
-          bhtml += '<td>' + v.toLocaleString() + '</td>';
-        } else if (key === 'trig_id') {
-          bhtml += '<td>' + v + '</td>';
-        } else {
-          let num = parseFloat(v);
-          bhtml += '<td>' + (isNaN(num) ? v : num.toFixed(6)) + '</td>';
-        }
+    // 每张卡一张小表（Feature × 该卡 4 通道），多卡横向铺开
+    let i = 0, cardNo = 0;
+    while (i < nCh) {
+      const slot = chs2[i] ? chs2[i].slot : -1;
+      const grouped = (slot !== undefined && slot >= 0);
+      let j = i;
+      if (grouped) {
+        while (j < nCh && chs2[j] && chs2[j].slot === slot) j++;
+      } else {
+        j = nCh;
       }
-      bhtml += '</tr>';
+      cardNo++;
+      fhtml += '<div class="featCard"><div class="featCardTitle">Card#' + cardNo
+             + (grouped ? ' · slot ' + slot : '') + '</div><table>';
+      let hh = '<tr><th>Feature</th>';
+      for (let k = i; k < j; k++) hh += '<th>CH' + (k+1) + '</th>';
+      let bb = '</tr>';
+      for (const [key, label] of FEATURE_LABELS) {
+        bb += '<tr><td>' + label + '</td>';
+        for (let k = i; k < j; k++) {
+          let v = feat[k][key];
+          if (key === 'bunch_id') {
+            bb += '<td>' + v.toLocaleString() + '</td>';
+          } else if (key === 'trig_id') {
+            bb += '<td>' + v + '</td>';
+          } else {
+            let num = parseFloat(v);
+            bb += '<td>' + (isNaN(num) ? v : num.toFixed(6)) + '</td>';
+          }
+        }
+        bb += '</tr>';
+      }
+      fhtml += '<thead>' + hh + '</thead><tbody>' + bb + '</tbody></table></div>';
+      i = j;
     }
   } else {
-    bhtml += '<tr><td colspan="' + Math.max(2, nCh + 1) + '" style="text-align:center;color:#606080">waiting for batch data...</td></tr>';
+    fhtml = '<div class="featCard"><table><tr><td style="text-align:center;color:#606080">waiting for batch data...</td></tr></table></div>';
   }
-  body.innerHTML = bhtml;
+  wrap.innerHTML = fhtml;
 
   document.getElementById('statusText').textContent = d.running ? 'running' : 'stopped';
   document.getElementById('statusText').style.color = d.running ? '#4ae0a0' : '#e04a4a';
@@ -543,35 +581,59 @@ const POW20 = 1048576.0;
 const FFFF = 65535.0;
 const charts = [];
 let lastChannelCount = 0;
+let lastSlots = [];       // 每通道的卡槽（来自 SSE channels[].slot）
+let lastWaveSig = '';     // slot 签名，变化则按卡重建
 const CHART_COLORS = ['#4ae0a0', '#f0a030', '#e04a4a', '#00d4ff'];
 
-// 按通道数动态建/删波形图（4/8/12/16）
-function ensureCharts(n) {
-  if (!n || n <= 0) n = 4;
+// 按卡动态建/删波形图：每卡一个分节（标题 Card#N · slot X + 该卡通道一行）
+function ensureCharts(chanSlots) {
+  const n = chanSlots.length;
+  if (!n) return;
   const grid = document.getElementById('waveGrid');
   if (!grid) return;
-  if (charts.length === n && document.getElementById('chart0')) {
+  const sig = chanSlots.join(',');
+  if (charts.length === n && document.getElementById('chart0') && lastWaveSig === sig) {
     for (let i = 0; i < n; i++) {
       charts[i] = charts[i] || initChart('chart' + i, i);
       charts[i] && charts[i].resize();
     }
     return;
   }
-  grid.style.gridTemplateColumns = 'repeat(' + (n <= 4 ? 2 : 4) + ',1fr)';
-  for (let i = n; i < charts.length; i++) {
+  lastWaveSig = sig;
+  for (let i = 0; i < charts.length; i++) {
     if (charts[i]) { charts[i].dispose(); charts[i] = null; }
-    const old = document.getElementById('chart' + i);
-    if (old) old.remove();
   }
   charts.length = n;
-  for (let i = 0; i < n; i++) {
-    let el = document.getElementById('chart' + i);
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'chart' + i;
-      el.style.cssText = 'height:180px;width:100%;min-width:0';
-      grid.appendChild(el);
+  grid.innerHTML = '';
+  let i = 0, cardNo = 0;
+  while (i < n) {
+    cardNo++;
+    const slot = chanSlots[i];
+    let j = i;
+    if (slot >= 0) {
+      while (j < n && chanSlots[j] === slot) j++;
+    } else {
+      j = n;   // 无 slot 信息（sim/旧后端）→ 整体一个分节
     }
+    const nCh = j - i;
+    const sec = document.createElement('div');
+    sec.className = 'cardWave';
+    const title = document.createElement('div');
+    title.className = 'cardWaveTitle';
+    title.textContent = 'Card#' + cardNo + (slot >= 0 ? ' · slot ' + slot : '');
+    const cGrid = document.createElement('div');
+    cGrid.className = 'cardWaveGrid';
+    cGrid.style.gridTemplateColumns = 'repeat(' + Math.min(nCh, 4) + ',1fr)';
+    for (let k = i; k < j; k++) {
+      const el = document.createElement('div');
+      el.id = 'chart' + k;
+      el.style.cssText = 'height:180px;width:100%;min-width:0';
+      cGrid.appendChild(el);
+    }
+    sec.appendChild(title);
+    sec.appendChild(cGrid);
+    grid.appendChild(sec);
+    i = j;
   }
   requestAnimationFrame(() => {
     for (let i = 0; i < n; i++) {
@@ -630,7 +692,7 @@ document.getElementById('waveCheck').addEventListener('change', function() {
   const on = this.checked;
   document.getElementById('waveSection').style.display = on ? 'block' : 'none';
   if (on) {
-    ensureCharts(lastChannelCount || 4);
+    ensureCharts(lastSlots.length ? lastSlots : [-1, -1, -1, -1]);
     if (!waveTimer) {
       waveTimer = setInterval(fetchWaveform, 1000);
       fetchWaveform();
