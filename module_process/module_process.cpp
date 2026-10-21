@@ -495,7 +495,7 @@ void ModuleProcess::doConsumeOnce() {
                   << "\n";
     }
 
-    // Print 4-channel feature table
+    // Print feature table (nCh_ 通道，动态)
     {
         std::cout << "[" << name_ << "] batch=" << curBatch
                   << " frame_idx=" << selIdx << " step=" << bunchIdStep_ << "\n";
