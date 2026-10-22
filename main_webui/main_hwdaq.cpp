@@ -572,7 +572,12 @@ int main() {
             std::string scope = j.value("scope", "channel");
             int cardIndex = j.value("cardIndex", 0);
             int channel = j.value("channel", 0);
-            std::string cmd = scope == "channel" ? "SaveChannel" : scope == "card" ? "SaveCard" : "SaveChassis";
+            std::string cmd = scope == "channel" ? "SaveChannel"
+                              : scope == "card" ? "SaveCard"
+                              : scope == "chassis" ? "SaveChassis"
+                              : scope == "add-card" ? "AddCard"
+                              : scope == "remove-card" ? "RemoveCard"
+                              : "SaveChassis";
             msm::Message msg(cmd);
             msg.setTarget("ConfigEditor");
             msg.setSender("WebUI");

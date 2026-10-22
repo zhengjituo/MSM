@@ -50,6 +50,14 @@ public:
     std::string applyEdit(const std::string& scope, int cardIndex, int channel,
                           const std::map<std::string, std::string>& params);
 
+    // ── 卡片增删（写入待使用配置，下次后端 Run 生效）──
+    // 新增卡：slot=机箱卡槽；cardType="1073"|"3010"；
+    //   1073 的通道参数深拷贝自 cloneFromCardIndex（须为已有 1073）；
+    //   新卡号 = 最小未用号，插入到 3010 之前（通道编号跟随 JSON Card#N 顺序）
+    std::string applyCardAdd(int slot, const std::string& cardType, int cloneFromCardIndex);
+    // 删除卡：按 CardIndex 删除（含 3010）
+    std::string applyCardRemove(int cardIndex);
+
     // app_config 子对象整体替换（合并到现有 app_config，含类型保护）
     std::string applyAppEdit(const std::string& appConfigJson);
 

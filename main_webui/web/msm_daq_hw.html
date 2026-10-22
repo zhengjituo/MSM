@@ -117,7 +117,20 @@ tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-alig
     <button class="btn btn-primary btn-sm" onclick="cfgSave('channel')">保存当前通道</button>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('card')">保存本卡全部通道</button>
     <button class="btn btn-primary btn-sm" onclick="cfgSave('chassis')">保存机箱全部 1073 通道</button>
+    <button class="btn btn-default btn-sm" onclick="cfgCardAddShow()">＋ 新增板卡</button>
+    <button class="btn btn-danger btn-sm" onclick="cfgCardRemove()">－ 删除所选板卡</button>
+    <span style="color:#606080; font-size:11px;">增删板卡写入待使用配置，下次 Run（后端重启）生效</span>
     <button class="btn btn-default btn-sm" onclick="toggleCfgPanel(false)">关闭</button>
+  </div>
+  <div id="cfgAddCardRow" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; padding:8px 10px; border:1px dashed #0f3460; border-radius:6px;">
+    <span style="font-size:12px; color:#a0a0b0; font-weight:600;">新增板卡</span>
+    <select id="cfgAddType" onchange="cfgAddCardRefreshSlots()" style="background:#16213e; color:#e0e0e0; border:1px solid #0f3460; border-radius:4px; padding:3px 6px; font-size:12px;"></select>
+    <select id="cfgAddSlot" onchange="document.getElementById('cfgAddSlotManual').style.display='none'" style="background:#16213e; color:#e0e0e0; border:1px solid #0f3460; border-radius:4px; padding:3px 6px; font-size:12px;"></select>
+    <input id="cfgAddSlotManual" type="number" min="1" max="64" placeholder="手动填 slot" style="width:100px; display:none; background:#16213e; color:#e0e0e0; border:1px solid #0f3460; border-radius:4px; padding:3px 6px; font-size:12px;">
+    <select id="cfgAddCloneFrom" style="background:#16213e; color:#e0e0e0; border:1px solid #0f3460; border-radius:4px; padding:3px 6px; font-size:12px;"></select>
+    <span id="cfgAddHint" style="color:#606080; font-size:11px;"></span>
+    <button class="btn btn-primary btn-sm" onclick="cfgCardAddDo()">确认新增</button>
+    <button class="btn btn-default btn-sm" onclick="cfgCardAddShow(false)">取消</button>
   </div>
   <div id="cfgBody" style="display:grid; grid-template-columns:220px 1fr; gap:12px;">
     <div>
@@ -239,6 +252,11 @@ function render(d) {
         + (d.scanned_3010_slot >= 0 ? ' · 3010 slot ' + d.scanned_3010_slot : ' · 3010 无')
       : '';
   }
+  // 机箱扫描结果缓存（供「新增板卡」按扫描选 slot）
+  lastBackendAlive = !!d.backend_alive;
+  if (typeof d.scanned_1073_slots === 'string' && d.scanned_1073_slots)
+    lastScan1073 = d.scanned_1073_slots.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+  if (typeof d.scanned_3010_slot === 'number') lastScan3010 = d.scanned_3010_slot;
   const se = document.getElementById('startErr');
   if (se) se.textContent = d.last_start_error ? ('启动失败: ' + d.last_start_error) : '';
 
@@ -364,6 +382,9 @@ function doStop() { post('/api/msg', 'stop'); }
 
 let CFG_META = { keys: [], enums: {}, cards: {}, version: '', pendingFile: '', runtimeFile: '', initFile: '' };
 let CFG = null;
+let lastScan1073 = [];    // 机箱扫描到的 1073 slot（后端未启动/未采集过为空）
+let lastScan3010 = -1;    // 机箱扫描到的 3010 slot
+let lastBackendAlive = false;
 
 async function fetchJSON(url, opts) {
   const r = await fetch(url, opts);
@@ -563,6 +584,123 @@ async function cfgSave(scope) {
   const { r, j } = await fetchJSON('/api/config/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (j.status === 'ok') { toast('已保存到待使用配置，下次启动生效'); cfgLoad(); }
   else toast('保存失败: ' + (j.status || r.status));
+}
+
+// ── 板卡增删（按机箱扫描结果；写入待使用配置，下次 Run 生效）──
+function cfgCardList() {
+  const cards = (CFG && CFG.DaqParameter && CFG.DaqParameter.Cards) || {};
+  const list = [];
+  for (const name in cards) list.push({ name, ...cards[name] });
+  return list;
+}
+
+function cfgCardAddShow(show) {
+  const row = document.getElementById('cfgAddCardRow');
+  row.style.display = (show === false) ? 'none' : 'flex';
+  if (show === false) return;
+  const list = cfgCardList();
+  const has3010 = list.some(c => c.CardType === '3010');
+  // 类型：1073 恒可选；3010 仅在未配置时可选
+  const typeSel = document.getElementById('cfgAddType');
+  typeSel.innerHTML = '<option value="1073">1073 数字化板卡</option>';
+  if (!has3010) {
+    const s3010 = document.createElement('option');
+    s3010.value = '3010';
+    s3010.textContent = '3010 时钟同步卡' + (lastScan3010 >= 0 ? '（扫描到 slot ' + lastScan3010 + '）' : '');
+    typeSel.appendChild(s3010);
+  }
+  // 克隆源：已有 1073（新卡通道参数深拷贝自它）
+  const cloneSel = document.getElementById('cfgAddCloneFrom');
+  cloneSel.innerHTML = '';
+  const c1073 = list.filter(c => c.CardType === '1073');
+  if (c1073.length) {
+    cloneSel.style.display = '';
+    let lb = document.getElementById('cfgAddCloneLb');
+    if (!lb) {
+      lb = document.createElement('span');
+      lb.id = 'cfgAddCloneLb';
+      lb.textContent = '通道参数克隆自:';
+      lb.style.cssText = 'font-size:12px;color:#a0a0b0';
+      cloneSel.parentElement.insertBefore(lb, cloneSel);
+    }
+    for (const c of c1073) {
+      const op = document.createElement('option');
+      op.value = String(c.CardIndex);
+      op.textContent = c.name + ' (slot ' + c.Slot + ')';
+      cloneSel.appendChild(op);
+    }
+  } else {
+    cloneSel.style.display = 'none';
+    const lb = document.getElementById('cfgAddCloneLb');
+    if (lb) lb.remove();
+  }
+  cfgAddCardRefreshSlots();
+}
+
+function cfgAddCardRefreshSlots() {
+  const type = document.getElementById('cfgAddType').value;
+  const sel = document.getElementById('cfgAddSlot');
+  const manual = document.getElementById('cfgAddSlotManual');
+  const hint = document.getElementById('cfgAddHint');
+  sel.innerHTML = '';
+  const configured = cfgCardList().map(c => c.Slot);
+  let cands = [];
+  if (type === '1073') {
+    cands = lastScan1073.filter(s => !configured.includes(s));
+  } else {
+    cands = (lastScan3010 >= 0 && !configured.includes(lastScan3010)) ? [lastScan3010] : [];
+  }
+  if (cands.length) {
+    for (const s of cands) {
+      const op = document.createElement('option');
+      op.value = String(s);
+      op.textContent = 'slot ' + s;
+      sel.appendChild(op);
+    }
+    sel.style.display = '';
+    manual.style.display = 'none';
+    hint.textContent = '（来自机箱扫描，未配置的空位）';
+  } else {
+    sel.style.display = 'none';
+    manual.style.display = '';
+    hint.textContent = lastBackendAlive
+      ? '（扫描结果中没有未配置的空位，可手动输入 slot）'
+      : '（后端未启动、无扫描结果，请手动输入 slot）';
+  }
+}
+
+async function cfgCardAddDo() {
+  const type = document.getElementById('cfgAddType').value;
+  const sel = document.getElementById('cfgAddSlot');
+  const manual = document.getElementById('cfgAddSlotManual');
+  const slot = sel.style.display === 'none' ? parseInt(manual.value, 10) : parseInt(sel.value, 10);
+  if (!slot || slot <= 0) { toast('请选择或输入有效的 slot'); return; }
+  const params = { slot: String(slot), cardType: type };
+  if (type === '1073') {
+    const cf = document.getElementById('cfgAddCloneFrom');
+    if (cf.style.display !== 'none' && cf.value) params.cloneFrom = cf.value;
+  }
+  const body = { scope: 'add-card', cardIndex: 0, channel: 0, params };
+  const { r, j } = await fetchJSON('/api/config/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (j.status === 'ok') { toast('已新增 ' + type + ' slot ' + slot + '（下次 Run 生效）'); cfgCardAddShow(false); cfgLoad(); }
+  else toast('新增失败: ' + (j.status || r.status));
+}
+
+async function cfgCardRemove() {
+  const card = cfgCurrentCard();
+  if (!card) { toast('请先在左侧选择要删除的板卡'); return; }
+  const name = document.getElementById('cfgSelCard').value;
+  const n1073 = cfgCardList().filter(c => c.CardType === '1073').length;
+  let warn = '删除 ' + name + '（slot ' + card.Slot + '）？\n删除后下次 Run 不再打开该卡。';
+  if (card.CardType === '1073' && n1073 <= 1)
+    warn = '这是最后一张 1073 卡，删除后配置将没有采集通道！\n\n' + warn;
+  if (card.CardType === '3010')
+    warn = '删除 3010 后多卡全局同步触发将不可用！\n\n' + warn;
+  if (!confirm(warn)) return;
+  const body = { scope: 'remove-card', cardIndex: card.CardIndex, channel: 0, params: {} };
+  const { r, j } = await fetchJSON('/api/config/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (j.status === 'ok') { toast('已删除 ' + name + '（下次 Run 生效）'); cfgLoad(); }
+  else toast('删除失败: ' + (j.status || r.status));
 }
 
 function toggleSave() {

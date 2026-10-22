@@ -302,6 +302,92 @@ std::string ConfigEditorModule::applyEdit(const std::string& scope, int cardInde
     return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
 }
 
+// ── 卡片增删 ─────────────────────────────────────────────────
+std::string ConfigEditorModule::applyCardAdd(int slot, const std::string& cardType,
+                                             int cloneFromCardIndex) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (slot <= 0) return "error:bad_slot";
+    if (cardType != "1073" && cardType != "3010") return "error:bad_card_type:" + cardType;
+
+    auto& cards = cardsJson();
+    // slot 冲突（任意卡）
+    for (auto& [k, c] : cards.items()) {
+        if (c.contains("Slot") && c["Slot"].is_number_integer() && c["Slot"].get<int>() == slot)
+            return "error:slot_in_use:" + std::to_string(slot);
+    }
+
+    if (cardType == "3010") {
+        for (auto& [k, c] : cards.items()) {
+            if (c.value("CardType", "") == "3010") return "error:already_has_3010";
+        }
+        ordered_json c3010;
+        c3010["CardIndex"] = 3010;
+        c3010["CardType"] = "3010";
+        c3010["Channels"] = nullptr;
+        c3010["Slot"] = slot;
+        cards["Card#3010"] = std::move(c3010);
+        return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
+    }
+
+    // 1073：最多 4 张（16ch 上限）；新卡号 = 最小未用号
+    int n1073 = 0;
+    for (auto& [k, c] : cards.items())
+        if (c.value("CardType", "") == "1073") n1073++;
+    if (n1073 >= 4) return "error:max_4_cards";
+    int newIdx = 1;
+    while (cards.contains("Card#" + std::to_string(newIdx))) newIdx++;
+
+    ordered_json* src = cloneFromCardIndex > 0 ? findCard(cloneFromCardIndex) : nullptr;
+    if (!src) {
+        // 未指定克隆源 → 取第一张已有 1073
+        for (auto& [k, c] : cards.items()) {
+            if (c.value("CardType", "") == "1073") { src = &c; break; }
+        }
+    }
+    if (!src || src->value("CardType", "") != "1073"
+        || !src->contains("Channels") || (*src)["Channels"].is_null())
+        return "error:no_source_card";
+
+    ordered_json c;
+    c["CardIndex"] = newIdx;
+    c["CardType"] = "1073";
+    c["Channels"] = (*src)["Channels"];   // 通道参数深拷贝
+    c["Slot"] = slot;
+
+    // 插入到数字顺序位置、3010 之前（通道编号跟随 JSON Card#N 顺序）
+    ordered_json nc;
+    bool inserted = false;
+    for (auto& [k, v] : cards.items()) {
+        int idx = v.contains("CardIndex") && v["CardIndex"].is_number_integer()
+                    ? v["CardIndex"].get<int>() : 0;
+        if (!inserted && (idx == 3010 || idx > newIdx)) {
+            nc["Card#" + std::to_string(newIdx)] = c;
+            inserted = true;
+        }
+        nc[k] = v;
+    }
+    if (!inserted) nc["Card#" + std::to_string(newIdx)] = c;
+    cfg_["DaqParameter"]["Cards"] = std::move(nc);
+
+    return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
+}
+
+std::string ConfigEditorModule::applyCardRemove(int cardIndex) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto& cards = cardsJson();
+    std::string name;
+    for (auto& [k, c] : cards.items()) {
+        if (c.contains("CardIndex") && c["CardIndex"].is_number_integer()
+            && c["CardIndex"].get<int>() == cardIndex) { name = k; break; }
+    }
+    if (name.empty()) return "error:no_card:" + std::to_string(cardIndex);
+    ordered_json nc;
+    for (auto& [k, v] : cards.items())
+        if (k != name) nc[k] = v;
+    cfg_["DaqParameter"]["Cards"] = std::move(nc);
+    return saveToFileAtomic(loadedPath_, cfg_.dump(4)) ? "ok" : "error:write_failed";
+}
+
 // 合并 app_config（含类型保护）；成功返回空串，失败返回 "error:..."
 std::string ConfigEditorModule::mergeAppConfig(ordered_json& app, ordered_json& ac) {
     for (auto& [k, v] : ac.items()) {
@@ -393,6 +479,31 @@ void ConfigEditorModule::handleState(const msm::Message& msg) {
             if (k.rfind("param.", 0) == 0) params[k.substr(6)] = v;
         }
         std::string status = applyEdit(scope, cardIndex, channel, params);
+        msm::Message resp("Response");
+        resp.setTarget(msg.getSender());
+        resp.setCorrelationId(msg.getCorrelationId());
+        resp.data.set("status", status);
+        msm::MessageBus::instance().send(resp);
+    } else if (msg.cmd == "AddCard") {
+        // WebUI /api/config/save scope=add-card：param.slot / param.cardType / param.cloneFrom
+        std::map<std::string, std::string> params;
+        for (auto& [k, v] : msg.data.data)
+            if (k.rfind("param.", 0) == 0) params[k.substr(6)] = v;
+        auto getParam = [&](const char* k, const std::string& dflt) {
+            auto it = params.find(k);
+            return it == params.end() ? dflt : it->second;
+        };
+        int slot = 0, cloneFrom = 0;
+        try { slot = std::stoi(getParam("slot", "0")); } catch (...) {}
+        try { cloneFrom = std::stoi(getParam("cloneFrom", "0")); } catch (...) {}
+        std::string status = applyCardAdd(slot, getParam("cardType", "1073"), cloneFrom);
+        msm::Message resp("Response");
+        resp.setTarget(msg.getSender());
+        resp.setCorrelationId(msg.getCorrelationId());
+        resp.data.set("status", status);
+        msm::MessageBus::instance().send(resp);
+    } else if (msg.cmd == "RemoveCard") {
+        std::string status = applyCardRemove(msg.data.getInt("cardIndex", 0));
         msm::Message resp("Response");
         resp.setTarget(msg.getSender());
         resp.setCorrelationId(msg.getCorrelationId());

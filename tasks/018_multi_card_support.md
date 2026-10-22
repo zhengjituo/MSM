@@ -81,3 +81,8 @@ a2ea90a  T7 docs: 真机验证结果 + 同步要点 + 卡数变更限制
 - 2026-10-21 WebUI 多卡分组展示（`e2e8e5d`）：DAQ Status 增 `chN_slot`，
   Frame Summary 按卡表头行、Feature Table 每卡一张小表（横向铺开）、
   波形每卡一个分节；sim/无 slot 回退平铺。真机 2 卡验证分组正确
+- 2026-10-22 WebUI Config 面板增删板卡（用户要求，推翻原「不做加/删卡 UI」）：
+  ConfigEditorModule 加 applyCardAdd/applyCardRemove（复用 /api/config/save
+  scope=add-card/remove-card）；新增 1073 通道参数深拷贝自已有卡、slot 按机箱
+  扫描选空位或手输；slot 冲突/重复 3010/超 4 卡报错。写入待使用配置，
+  下次 Run 生效。API 级测试 8 项全过 + 真机 2 卡 8ch E2E 通过
