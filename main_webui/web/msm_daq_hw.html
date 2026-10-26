@@ -45,6 +45,8 @@ tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-alig
 .featCard table { margin-bottom: 0; }
 .cardWave { margin-bottom: 4px; }
 .cardWaveTitle { font-size: 12px; color: #7ab0ff; font-weight: 600; margin: 4px 0; }
+.waveTab { font-size: 12px; padding: 3px 10px; border: 1px solid #0f3460; border-radius: 4px; background: #16213e; color: #a0a0b0; cursor: pointer; }
+.waveTab.active { background: #0f3460; color: #e0e0e0; border-color: #7ab0ff; }
 .cardWaveGrid { display: grid; gap: 8px; }
 </style>
 </head>
@@ -100,7 +102,8 @@ tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-alig
 
 <div id="waveSection" style="display:none">
   <h2>Waveform <span style="font-size:12px;color:#606080" id="waveMeta"></span></h2>
-  <div id="waveGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+  <div id="waveTabs" style="display:none; gap:6px; margin-bottom:6px; flex-wrap:wrap"></div>
+  <div id="waveGrid" style="display:grid;grid-template-columns:1fr;gap:8px"></div>
 </div>
 
 <div id="statusBar">
@@ -723,7 +726,10 @@ let lastSlots = [];       // 每通道的卡槽（来自 SSE channels[].slot）
 let lastWaveSig = '';     // slot 签名，变化则按卡重建
 const CHART_COLORS = ['#4ae0a0', '#f0a030', '#e04a4a', '#00d4ff'];
 
-// 按卡动态建/删波形图：每卡一个分节（标题 Card#N · slot X + 该卡通道一行）
+let waveCards = [];       // [{slot, cardNo, i0, i1, sec}]，按卡分节记录
+let activeWaveTab = 0;    // 当前显示的卡 tab（多卡时一次只显示一张卡）
+
+// 按卡动态建/删波形图：每卡一个分节（标题 Card#N · slot X + 该卡通道 2×2）
 function ensureCharts(chanSlots) {
   const n = chanSlots.length;
   if (!n) return;
@@ -743,6 +749,7 @@ function ensureCharts(chanSlots) {
   }
   charts.length = n;
   grid.innerHTML = '';
+  waveCards = [];
   let i = 0, cardNo = 0;
   while (i < n) {
     cardNo++;
@@ -761,7 +768,7 @@ function ensureCharts(chanSlots) {
     title.textContent = 'Card#' + cardNo + (slot >= 0 ? ' · slot ' + slot : '');
     const cGrid = document.createElement('div');
     cGrid.className = 'cardWaveGrid';
-    cGrid.style.gridTemplateColumns = 'repeat(' + Math.min(nCh, 4) + ',1fr)';
+    cGrid.style.gridTemplateColumns = 'repeat(' + Math.min(nCh, 2) + ',1fr)';
     for (let k = i; k < j; k++) {
       const el = document.createElement('div');
       el.id = 'chart' + k;
@@ -771,13 +778,49 @@ function ensureCharts(chanSlots) {
     sec.appendChild(title);
     sec.appendChild(cGrid);
     grid.appendChild(sec);
+    waveCards.push({ slot: slot, cardNo: cardNo, i0: i, i1: j, sec: sec });
     i = j;
   }
+  buildWaveTabs();
+  if (activeWaveTab >= waveCards.length) activeWaveTab = 0;
+  applyWaveTabs();
   requestAnimationFrame(() => {
     for (let i = 0; i < n; i++) {
       charts[i] = charts[i] || initChart('chart' + i, i);
       charts[i] && charts[i].resize();
     }
+  });
+}
+
+// 多卡 → tab 栏（一次只显示一张卡）；单卡/无 slot（sim）不显示
+function buildWaveTabs() {
+  const bar = document.getElementById('waveTabs');
+  if (!bar) return;
+  bar.innerHTML = '';
+  if (waveCards.length < 2) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  waveCards.forEach((c, ti) => {
+    const b = document.createElement('button');
+    b.className = 'waveTab';
+    b.textContent = 'Card#' + c.cardNo + (c.slot >= 0 ? ' · slot ' + c.slot : '');
+    b.onclick = () => { activeWaveTab = ti; applyWaveTabs(); };
+    bar.appendChild(b);
+  });
+}
+
+function applyWaveTabs() {
+  if (!waveCards.length) return;
+  waveCards.forEach((c, ti) => { c.sec.style.display = (ti === activeWaveTab) ? '' : 'none'; });
+  const bar = document.getElementById('waveTabs');
+  if (bar) {
+    bar.querySelectorAll('.waveTab').forEach((b, ti) => b.classList.toggle('active', ti === activeWaveTab));
+  }
+  // 切到的卡容器由隐藏变可见，canvas 需重新排版
+  requestAnimationFrame(() => {
+    const c = waveCards[activeWaveTab];
+    if (!c) return;
+    for (let i = c.i0; i < c.i1; i++)
+      charts[i] && charts[i].resize();
   });
 }
 
