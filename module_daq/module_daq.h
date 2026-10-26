@@ -6,6 +6,7 @@
 #include "daq_config.h"
 #include <atomic>
 #include <thread>
+#include <chrono>
 #include <cstdint>
 #include <vector>
 #include <array>
@@ -13,7 +14,7 @@
 #include <string>
 
 class ModuleDAQ : public msm::Module {
-    // MSG-driven acquisition: Configure(read config) → Start(init SD+)，ReadOnce/IDLE 驱动 doReadOnce
+    // MSG-driven acquisition: Configure(read config) → Start(init SD+)，读回由每卡专属读线程驱动
 public:
     static constexpr int MAX_CH = 16;
 
@@ -59,7 +60,15 @@ private:
         UserCircularBuffer* ring = nullptr;
         std::atomic<int64_t> totalFrames{0};
         std::atomic<size_t> frameSize{0};
+        // API 读回计时（排查双卡阻塞）：SDK 调用 / memcpy+ring 写入，累计 µs + 单次最大 µs
+        std::atomic<int64_t> apiCalls{0}, apiUs{0}, apiMaxUs{0};
+        std::atomic<int64_t> copyUs{0}, copyMaxUs{0};
+        // SDK 返回帧连续性（文档：连续 n 帧）；首次读取验证后决定单次大 memcpy 还是逐帧
+        bool contigOk = true;
+        bool contigChecked = false;
     };
+    // 每卡一个读线程（多卡单线程串行读 → pass 周期超过 SDK 16MB 缓冲保持时间 → 丢帧）
+    std::vector<std::thread> readThreads_;
 
     void onReadConfig(const msm::Json& data);
     bool updateConfig();
@@ -70,7 +79,9 @@ private:
 
     bool initHW(std::string& error);
     bool closeHW();
-    void doReadOnce();
+    void readLoop(int cardNo, const std::vector<int>& chIds);
+    void startReadThreads();
+    void joinReadThreads();
     void stopChannels();
     void flushAll();
 

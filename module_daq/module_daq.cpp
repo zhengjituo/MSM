@@ -14,6 +14,25 @@
 #include <climits>
 #include <unordered_map>
 #include <set>
+#include <ctime>
+#include <sys/time.h>
+
+// 原子取 max（API 计时用）
+static void atomicMax(std::atomic<int64_t>& v, int64_t x) {
+    for (;;) {
+        int64_t cur = v.load(std::memory_order_relaxed);
+        if (x <= cur) return;
+        if (v.compare_exchange_weak(cur, x, std::memory_order_relaxed)) return;
+    }
+}
+
+// 启动/停止时序日志的墙钟戳（ms）：验证「板卡先采集、3010 触发后使能」的间隔
+static std::string nowStamp() {
+    struct timeval tv; gettimeofday(&tv, nullptr);
+    struct tm lt; localtime_r(&tv.tv_sec, &lt);
+    char b[16]; strftime(b, sizeof(b), "%H:%M:%S", &lt);
+    return std::string(b) + "." + std::to_string(tv.tv_usec / 1000);
+}
 
 // 整型列表拼接（错误信息 / 状态摘要）
 static std::string joinInts(const std::vector<int>& v) {
@@ -82,18 +101,11 @@ ModuleDAQ::Stats ModuleDAQ::getStats() const {
 }
 
 void ModuleDAQ::onIdle() {
-    if (acquiring_.load() && !emergencyStop_.load()) {
-        msm::Message readOnce("ReadOnce");
-        post(readOnce);
-    }
+    // 帧读回由每卡专属读线程驱动（readLoop），消息循环只处理控制消息
 }
 
 void ModuleDAQ::handleState(const msm::Message& msg) {
-    if (msg.cmd == "ReadOnce") {
-        if (!emergencyStop_.load())
-            doReadOnce();
-
-    } else if (msg.cmd == "Init") {
+    if (msg.cmd == "Init") {
         if (emergencyStop_.load()) emergencyStop_ = false;
         onReadConfig(msg.data);
         // 多卡严格匹配：hw 未就绪，或配置卡集合与已打开集合不一致 → 重新扫描/打开
@@ -387,33 +399,46 @@ bool ModuleDAQ::onStart() {
         return false;
     }
 
-    // 先关掉 acquiring_，避免启动过程中 doReadOnce 把旧数据写进 ring
+    // 先关掉 acquiring_，避免启动过程中读线程把旧数据写进 ring
     acquiring_ = false;
 
     // ── 启动接收 ────────────────────────────────────────────
     for (int i = 0; i < activeChCount_; i++) {
         auto& slot = activeChannels_[i];
-        CxDeviceSetChannelRecvBufferSize(slot.cardHandle, slot.ch, 16 * 1024 * 1024);
+        // 32MB ≈ 280ms 数据：吸收读线程偶发停顿（实测 spike 至 150ms），
+        // 16MB(139ms) 在双卡下不足以覆盖 pass 周期
+        CxDeviceSetChannelRecvBufferSize(slot.cardHandle, slot.ch, 32 * 1024 * 1024);
         CxDeviceStartChannelRecv(slot.cardHandle, slot.ch);
         CxDeviceSetChannel(slot.cardHandle, slot.ch, "run");
-        std::cout << "[ModuleDAQ] ch" << slot.ch << " (id=" << i << ") recv started\n";
+        std::cout << "[ModuleDAQ] [" << nowStamp() << "] ch" << slot.ch << " (id=" << i << ") recv started\n";
     }
 
     // ── 3010 trigger ON（等所有通道启动稳定再开触发） ────
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     setTriggerOutput(true);
-    std::cout << "[ModuleDAQ] 3010 trigger enabled\n";
+    std::cout << "[ModuleDAQ] [" << nowStamp() << "] 3010 trigger enabled\n";
 
     emergencyStop_ = false;
     acquiring_ = true;
-    for (int i = 0; i < activeChCount_; i++)
+    for (int i = 0; i < activeChCount_; i++) {
         activeChannels_[i].totalFrames.store(0);
-    std::cout << "[ModuleDAQ] Acquiring (message-driven)\n";
+        activeChannels_[i].apiCalls.store(0);
+        activeChannels_[i].apiUs.store(0);
+        activeChannels_[i].apiMaxUs.store(0);
+        activeChannels_[i].copyUs.store(0);
+        activeChannels_[i].copyMaxUs.store(0);
+        activeChannels_[i].contigChecked = false;
+        activeChannels_[i].contigOk = true;
+    }
+    std::cout << "[ModuleDAQ] Acquiring (per-card read threads)\n";
 
     // DAQ ready → start Process consumer from clean ring state
     msm::Message startProcess("Start");
     startProcess.setTarget("Process");
     msm::MessageBus::instance().send(startProcess);
+
+    // 启动每卡读线程（在 Process 启动后，ring 从干净状态开始）
+    startReadThreads();
 
     return true;
 }
@@ -431,8 +456,11 @@ void ModuleDAQ::onStop() {
         return;
     emergencyStop_ = true;
 
+    // 等读线程退出（避免与 stopChannels/flushAll 并发调 SDK 同一卡句柄）
+    joinReadThreads();
+
     setTriggerOutput(false);
-    std::cout << "[ModuleDAQ] 3010 trigger off\n";
+    std::cout << "[ModuleDAQ] [" << nowStamp() << "] 3010 trigger off\n";
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     stopChannels();
@@ -440,6 +468,17 @@ void ModuleDAQ::onStop() {
     std::cout << "[DAQ] stop:";
     for (int i = 0; i < activeChCount_; i++)
         std::cout << " ch" << activeChannels_[i].ch << "=" << activeChannels_[i].totalFrames.load();
+    std::cout << std::endl;
+
+    // API 读回耗时汇总（ms / 单次最大 µs）：验证双卡下 SDK 调用是否被阻塞
+    std::cout << "[DAQ] read-time:";
+    for (int i = 0; i < activeChCount_; i++) {
+        auto& s = activeChannels_[i];
+        std::cout << " ch" << s.ch << "{api=" << (s.apiUs.load() / 1000)
+                  << "ms,max=" << s.apiMaxUs.load()
+                  << "us,copy=" << (s.copyUs.load() / 1000)
+                  << "ms,max=" << s.copyMaxUs.load() << "us}";
+    }
     std::cout << std::endl;
 }
 
@@ -470,41 +509,114 @@ void ModuleDAQ::onStatus(msm::Message& response) {
     response.data.set("scanned_3010_slot", std::to_string(scanned3010Slot_));
 }
 
-void ModuleDAQ::doReadOnce() {
-    if (emergencyStop_.load() || activeChCount_ == 0) return;
+// 每张卡一个读线程：chIds 为该卡的通道下标。
+// 背景：8 通道单线程串行读，每通道 SDK 调用+memcpy ~30ms → pass 周期 ~175ms
+// 超过 SDK 16MB 缓冲的保持时间(~139ms) → 缓冲 wrap 丢帧（双卡实测 ~8%）。
+// 拆成每卡一线程后周期 ~90ms < 139ms，且两卡并行。
+void ModuleDAQ::readLoop(int cardNo, const std::vector<int>& chIds) {
+    auto lastPass = std::chrono::steady_clock::now();
+    int64_t passNo = 0;
+    int slotNo = activeChannels_[chIds[0]].slot;
 
-    for (int i = 0; i < activeChCount_; i++) {
-        if (emergencyStop_.load()) return;
+    while (acquiring_.load() && !emergencyStop_.load()) {
+        auto passNow = std::chrono::steady_clock::now();
+        passNo++;
+        // pass 间隔探针：读线程停顿 >50ms 会打印（帧缺口归因：宿主 stall vs 上游丢帧）
+        int64_t passGapMs = std::chrono::duration_cast<std::chrono::milliseconds>(passNow - lastPass).count();
+        lastPass = passNow;
+        int64_t passFrames = 0;
+        bool any = false;
 
-        auto& slot = activeChannels_[i];
-        void* frames = nullptr;
-        uint32_t n = 0;
-        CxDeviceReadChannelFrames(slot.cardHandle, slot.ch, &frames, &n);
-        if (n == 0) continue;
+        for (int i : chIds) {
+            if (emergencyStop_.load()) return;
 
-        auto* rp = static_cast<RawPack*>(frames);
-        size_t flen = rp[0].BufferSize;
-        if (flen == 0) continue;
-        size_t bytes = (size_t)n * flen;
+            auto& slot = activeChannels_[i];
+            void* frames = nullptr;
+            uint32_t n = 0;
+            auto t0 = std::chrono::steady_clock::now();
+            CxDeviceReadChannelFrames(slot.cardHandle, slot.ch, &frames, &n);
+            auto t1 = std::chrono::steady_clock::now();
+            int64_t apiUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            slot.apiCalls.fetch_add(1, std::memory_order_relaxed);
+            slot.apiUs.fetch_add(apiUs, std::memory_order_relaxed);
+            atomicMax(slot.apiMaxUs, apiUs);
+            if (n == 0) continue;
+            passFrames += n;
+            any = true;
 
-        thread_local std::vector<uint8_t> buf;
-        if (bytes > buf.size())
-            buf.resize(bytes);
-        uint8_t* dst = buf.data();
-        for (uint32_t j = 0; j < n; j++) {
-            if (!rp[j].Buffer) { bytes = 0; break; }
-            std::memcpy(dst, rp[j].Buffer, flen);
-            dst += flen;
+            auto* rp = static_cast<RawPack*>(frames);
+            size_t flen = rp[0].BufferSize;
+            if (flen == 0) continue;
+            size_t bytes = (size_t)n * flen;
+
+            thread_local std::vector<uint8_t> buf;
+            if (bytes > buf.size())
+                buf.resize(bytes);
+
+            // SDK 文档：RawPack[].Buffer 为连续 n 帧；首次验证，连续则单次大 memcpy
+            if (!slot.contigChecked) {
+                slot.contigChecked = true;
+                for (uint32_t j = 1; j < n; j++)
+                    if (rp[j].Buffer != rp[0].Buffer + (size_t)j * flen) {
+                        slot.contigOk = false;
+                        std::cerr << "[ModuleDAQ] ch" << slot.ch
+                                  << " SDK 返回帧不连续，回退逐帧拷贝\n";
+                        break;
+                    }
+            }
+            if (slot.contigOk) {
+                std::memcpy(buf.data(), rp[0].Buffer, bytes);
+            } else {
+                uint8_t* dst = buf.data();
+                for (uint32_t j = 0; j < n; j++) {
+                    if (!rp[j].Buffer) { bytes = 0; break; }
+                    std::memcpy(dst, rp[j].Buffer, flen);
+                    dst += flen;
+                }
+                if (bytes == 0) continue;
+            }
+
+            slot.frameSize.store(flen);
+            slot.ring->setExpectedPacketSize(flen);
+            size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
+            auto t2 = std::chrono::steady_clock::now();
+            int64_t copyUs = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+            slot.copyUs.fetch_add(copyUs, std::memory_order_relaxed);
+            atomicMax(slot.copyMaxUs, copyUs);
+            int64_t total = slot.totalFrames.fetch_add(written / flen) + (int64_t)(written / flen);
+
+            // 读帧量在 Process/Storage 端打印，此处静默
         }
-        if (bytes == 0) continue;
 
-        slot.frameSize.store(flen);
-        slot.ring->setExpectedPacketSize(flen);
-        size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
-        int64_t total = slot.totalFrames.fetch_add(written / flen) + (int64_t)(written / flen);
+        if (!any)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
 
-        // 读帧量在 Process/Storage 端打印，此处静默
+        if (passGapMs > 50)
+            std::cout << "[ModuleDAQ] readpass gap: " << passGapMs
+                      << "ms (card" << cardNo << " slot=" << slotNo
+                      << ", pass " << passNo << ", frames=" << passFrames << ")\n";
     }
+}
+
+void ModuleDAQ::startReadThreads() {
+    joinReadThreads();
+    std::unordered_map<void*, std::vector<int>> byCard;
+    for (int i = 0; i < activeChCount_; i++)
+        byCard[activeChannels_[i].cardHandle].push_back(i);
+    int cardNo = 0;
+    for (auto& kv : byCard) {
+        const auto& ids = kv.second;
+        std::cout << "[ModuleDAQ] read thread " << ++cardNo
+                  << " started (card slot=" << activeChannels_[ids[0]].slot
+                  << ", " << ids.size() << " ch)\n";
+        readThreads_.emplace_back([this, cardNo, ids]() { readLoop(cardNo, ids); });
+    }
+}
+
+void ModuleDAQ::joinReadThreads() {
+    for (auto& t : readThreads_)
+        if (t.joinable()) t.join();
+    readThreads_.clear();
 }
 
 void ModuleDAQ::flushAll() {
@@ -515,7 +627,11 @@ void ModuleDAQ::flushAll() {
         auto& slot = activeChannels_[i];
         void* frames = nullptr;
         uint32_t n = 0;
+        auto f0 = std::chrono::steady_clock::now();
         CxDeviceReadChannelFrames(slot.cardHandle, slot.ch, &frames, &n);
+        int64_t fus = std::chrono::duration_cast<std::chrono::microseconds>(
+                          std::chrono::steady_clock::now() - f0).count();
+        std::cout << "[flush] ch" << slot.ch << " api=" << fus << "us n=" << n << std::endl;
         if (n == 0) continue;
 
         auto* rp = static_cast<RawPack*>(frames);

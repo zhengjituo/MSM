@@ -49,6 +49,27 @@
 - 同步时序：Start 时先 `StartChannelRecv` 全部通道 → 500ms 稳定 → 3010
   TRIG=ON（板卡先配置启动，3010 触发物理滞后），保证首帧对齐
 
+## 帧读回架构（每卡读线程）
+
+- 读回由**每张 1073 卡一个专属读线程**驱动（`readLoop`），线程内轮询本卡通道；
+  消息循环只处理控制消息（Init/Start/Stop/Status）
+- 背景：8 通道单线程串行读时，每通道 SDK 调用 + memcpy ≈ 30ms → pass 周期 ≈ 175ms，
+  超过 SDK 16MB 接收缓冲的保持时间（≈139ms@100kHz/1152B 帧）→ 缓冲 wrap 丢帧
+  （双卡实测丢帧 ~8%、100ms 对齐 dist 退化至 15.7ms）。单卡 4ch 周期 ≈ 120ms 恰好不丢，
+  所以单卡干净、双卡丢帧
+- 每卡一线程后周期 ≈ 35~90ms（两卡并行）；SDK 缓冲加大到 **32MB**（≈280ms 保持）
+  吸收读线程偶发停顿（实测 spike 至 ~195ms，多因 OS 调度/CPU 频率）
+- SDK 返回的 n 帧**连续**（`RawPack[].Buffer` 指向同一连续区，厂商文档保证）：
+  每通道首次读取验证连续性后走单次大 memcpy；不连续则回退逐帧拷贝（有日志）
+- 环形缓冲（`UserCircularBuffer`）写路径非阻塞：满则整块丢弃并计 `ovf`，从不等待；
+  实测真机 ovf=0
+- 读线程在 Process 启动**之后**拉起（ring 从干净状态开始）；Stop 时先
+  `joinReadThreads()` 再 `stopChannels/flushAll`，避免与停止/排空并发调同一卡句柄
+- 诊断探针（常开，低频）：
+  - pass 间隔 >50ms → `[ModuleDAQ] readpass gap: …ms (cardN slot=S, …)`
+  - Stop 汇总 → `[DAQ] read-time: chN{api=…ms,max=…us,copy=…ms,max=…us}`
+  - Stop 排空 → `[flush] chN api=…us n=…`
+
 ## 状态帧说明
 
 | 帧 | 功能 |
@@ -57,7 +78,6 @@
 | ReadConfig | JSON → DAQ_Config 内存容器，分配 ring buffer |
 | InitHW | SDK open+init 板卡（首次）；hw 已就绪时单独调用先 close 再重新 open+init |
 | UpdateConfig | 单点写全部硬件寄存器（板卡级 + 通道级） |
-| Start | 启动接收 → 2s settle → 3010 TRIG=ON |
-| Stop | 3010 TRIG=OFF → flush → 停止通道 |
+| Start | 启动接收 → 500ms settle → 3010 TRIG=ON → 启动每卡读线程 |
+| Stop | join 读线程 → 3010 TRIG=OFF → flush → 停止通道 |
 | CloseHW | close 板卡 → SDK 反初始化 |
-| ReadOnce | 非阻塞读帧 → ring buffer |
