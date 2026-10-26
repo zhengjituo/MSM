@@ -449,27 +449,42 @@ void ModuleProcess::doConsumeOnce() {
     }
 
     // Determine frame index: auto-align if frameIndex_ < 0
+    // 扫 ch0 批内所有帧，选 bunch_id 最靠近 100000 整数边界（%100000==0）的帧，
+    // 使显示的特征值落在整 100ms 时刻（100000 bunch = 10000 触发 @100kHz）。
+    // 不用恒定步长公式：束流 bunch 结构变化时步进不是恒定 10（实测有 6~10 波动），
+    // 公式会偏几十 ms；逐帧扫描对任意步进都稳健
     int selIdx = frameIndex_.load();
+    uint64_t alignDist = UINT64_MAX;   // 选中帧到 100000 边界的距离（bunch 单位）
     if (selIdx < 0) {
-        uint64_t firstBid = 0;
-        if (flen0 > 0) {
-            const uint8_t* ff = batchBuf_.data() + offsets[0];
-            if (ff[0] == 0xEB && ff[1] == 0x91 && flen0 >= TRAILER_SIZE) {
-                firstBid = readU48BE(ff + flen0 - TRAILER_SIZE + 2);
+        bool found = false;
+        if (flen0 > 0 && flen0 >= TRAILER_SIZE) {
+            for (size_t i = 0; i < batchSize_; i++) {
+                const uint8_t* ff = batchBuf_.data() + offsets[0] + i * flen0;
+                if (ff[0] != 0xEB || ff[1] != 0x91) continue;
+                uint64_t bid = readU48BE(ff + flen0 - TRAILER_SIZE + 2);
+                if (bid == 0) continue;
+                uint64_t m = bid % 100000ULL;
+                uint64_t dist = m < 50000ULL ? m : 100000ULL - m;
+                if (dist < alignDist) {
+                    alignDist = dist;
+                    selIdx = (int)i;
+                    found = true;
+                }
             }
         }
-        if (firstBid > 0 && bunchIdStep_ > 0) {
-            int offset = (int)((100000ULL - (firstBid % 100000ULL)) / (uint64_t)bunchIdStep_);
-            if (offset >= 0 && offset < (int)batchSize_)
-                selIdx = offset;
-            else
-                selIdx = 0;
-        } else {
-            selIdx = 0;
-        }
+        if (!found) selIdx = 0;
     }
     if (selIdx < 0) selIdx = 0;
     if ((size_t)selIdx >= batchSize_) selIdx = 0;
+    if (alignDist == UINT64_MAX && nCh_ > 0 && flen0 >= TRAILER_SIZE) {
+        // 手动 idx：按选中帧的 bunch_id 计算偏差（仅日志用）
+        const uint8_t* ff = batchBuf_.data() + offsets[0] + (size_t)selIdx * flen0;
+        if (ff[0] == 0xEB && ff[1] == 0x91) {
+            uint64_t b = readU48BE(ff + flen0 - TRAILER_SIZE + 2);
+            uint64_t m = b % 100000ULL;
+            alignDist = m < 50000ULL ? m : 100000ULL - m;
+        }
+    }
 
     // Extract selected frame from each channel
     for (int i = 0; i < nCh_; i++) {
@@ -509,7 +524,8 @@ void ModuleProcess::doConsumeOnce() {
     // Print feature table (nCh_ 通道，动态)
     {
         std::cout << ts << "[" << name_ << "] batch=" << curBatch
-                  << " frame_idx=" << selIdx << " step=" << bunchIdStep_ << "\n";
+                  << " frame_idx=" << selIdx << " step=" << bunchIdStep_
+                  << " dist=" << (alignDist == UINT64_MAX ? 0 : alignDist) << "\n";
         auto printRow = [&](const char* label, std::vector<double> BatchFrameData::*field) {
             std::cout << "  " << label;
             for (int i = 0; i < nCh_; i++)

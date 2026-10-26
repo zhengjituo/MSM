@@ -17,11 +17,14 @@
 
 ## 自动对齐
 
-`SetFrameIndex >> index=-1` 时自动计算 100ms 对齐偏移：
-```
-offset = (100000 - first_bunch_id % 100000) / bunchIdStep
-```
-`bunchIdStep` 通过 `BunchIdStep` 配置项设置，或从帧数据自动检测。
+`SetFrameIndex >> index=-1` 时**逐帧扫描** ch0 批内所有帧的 bunch_id，
+选最靠近 100000 整数边界（%100000==0）的帧，使显示的特征值落在整 100ms
+时刻（100000 bunch = 10000 触发 @100kHz）。
+
+不用「首帧 + 恒定步长公式」：束流 bunch 结构变化时步进不是恒定 10
+（真机实测 6~10 波动），公式会偏几十 ms；扫描对任意步进稳健，
+稳态批 dist=0（恰好边界），步进变化批残留 ≤~2ms（批内覆盖不到边界时）。
+对齐偏差写入批次日志 `dist=` 字段（bunch 单位）。
 
 ## onStatus 扩展字段
 
