@@ -65,6 +65,20 @@ static std::string mapTrigSource(const std::string& v) {
     return (it != m.end()) ? it->second : v;   // 数字原样透传
 }
 
+// TrigMode 配置名 → SDK 数值：厂商 demo 的 global 触发用例硬编码 "2"
+//（demo 配置 JSON 里写 "normal"，但其 C++ 路径传的是数字）
+static std::string mapTrigMode(const std::string& v) {
+    if (v == "normal") return "2";
+    return v;
+}
+
+// TrigPolarity 配置名 → SDK 数值（demo 用 "1"，对应 rising）
+static std::string mapTrigPolarity(const std::string& v) {
+    if (v == "Rising") return "1";
+    if (v == "Falling") return "0";
+    return v;
+}
+
 
 ModuleDAQ::ModuleDAQ()
     : Module("DAQModule")
@@ -281,10 +295,15 @@ bool ModuleDAQ::updateConfig() {
     activeChCount_ = 0;
 
     // ── 板卡级参数配置（每卡一次） ─────────────────────────
+    // 对照厂商 demo 的 global 触发用例补齐：GlobalTrigMode(0=或逻辑,1=与逻辑)、
+    // ExternalTrigLevel。双卡 bunch 相位的二分实验已排除 GlobalTrigMode
+    // （不设它相位仍同步），此处作为厂商参考值钉死
     for (auto h : cards1073_) {
         CxDeviceSetCardValue(h, "ClockSource", "0");
         CxDeviceSetCardValue(h, "SyncWindowEnable", "0");
         CxDeviceSetCardValue(h, "SyncSource", "0");
+        CxDeviceSetCardValue(h, "GlobalTrigMode", "0");
+        CxDeviceSetCardValue(h, "ExternalTrigLevel", "20");
     }
     if (card3010_) {
         CxDeviceSetCardValue(card3010_, "SyncTrigTrigMux", "2");
@@ -317,13 +336,13 @@ bool ModuleDAQ::updateConfig() {
             int ch = chCfg.channel;
             CxDeviceSetChannelValue(hCard, ch, "GlobalTrigEnable", "1");
             CxDeviceSetChannelValue(hCard, ch, "TrigSource", mapTrigSource(chCfg.trig_source).c_str());
-            CxDeviceSetChannelValue(hCard, ch, "TrigMode", chCfg.trig_mode.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigMode", mapTrigMode(chCfg.trig_mode).c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigLength", chCfg.trig_length.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigPulseWidth", chCfg.trig_pulse_width.c_str());
             CxDeviceSetChannelValue(hCard, ch, "VoltageRange", chCfg.voltage_range.c_str());
             CxDeviceSetChannelValue(hCard, ch, "VoltageOffset", chCfg.voltage_offset.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigLevel", chCfg.trig_level.c_str());
-            CxDeviceSetChannelValue(hCard, ch, "TrigPolarity", chCfg.trig_polarity.c_str());
+            CxDeviceSetChannelValue(hCard, ch, "TrigPolarity", mapTrigPolarity(chCfg.trig_polarity).c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigPosition", chCfg.trig_position.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigWindowStart", chCfg.trig_window_start.c_str());
             CxDeviceSetChannelValue(hCard, ch, "TrigDelayTime",

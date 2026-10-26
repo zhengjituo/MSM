@@ -43,6 +43,17 @@
 - 通道 `TrigSource` 配置值（`global` 等名字）在 module_daq 内映射为 SDK 数值
   （SDK 只认数字，传名字会被 StringToUint32 拒绝）。多卡同步的前提：
   每张卡的通道都设为 `global`(4)，3010 的触发经背板广播到所有 1073
+- 触发相关寄存器全部对齐厂商 demo 的 global 触发用例（`TrigMode`/`TrigPolarity`
+  名字同样走数值映射，同款静默拒绝坑）：
+  通道 `TrigMode` `normal`→`2`、`TrigPolarity` `Rising`→`1`/`Falling`→`0`；
+  卡级 `GlobalTrigMode=0`（或逻辑）、`ExternalTrigLevel=20`
+  - **双卡逐通道 bunch 相位已修复**：此前（触发寄存器未对齐 demo）双卡各通道相对
+    ch1 有 10~80ms 固定相位（每 run 不同、零漂移）；对齐后 8 通道 288 批偏差 0µs。
+    单卡一直正常（本地参考自洽）
+  - 归因：最可能是 `TrigMode`——名字被 SDK 静默拒绝后各通道停在默认触发模式，
+    默认模式在双卡下不与 3010 广播参考锁相。二分实验已排除卡级 `GlobalTrigMode`
+    （去掉它相位仍为 0）；`TrigMode` 单独未做二分，但它是唯一能产生「逐通道」
+    相位差且此前被静默拒绝的寄存器。若需 100% 锁定可再跑一轮去掉 `TrigMode` 映射
 - 首次 SDK 初始化时先对机箱内**全部卡** open → `ResetCard` → close（毫秒级），
   清掉上次进程异常退出残留的触发/DMA 脏状态（否则可能只收到一个接收缓冲
   的量甚至 0 帧）
