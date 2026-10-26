@@ -254,10 +254,12 @@ std::string IPCServer::process(const std::string& line)
         }
         if (upperLine == "ENABLESAVE") {
             Message s("EnableSave"); s.setTarget("Storage"); MessageBus::instance().send(s);
+            Message p("EnableSave"); p.setTarget("Process"); MessageBus::instance().send(p);
             return "{\"OK\":\"enablesave sent\"}";
         }
         if (upperLine == "DISABLESAVE") {
             Message s("DisableSave"); s.setTarget("Storage"); MessageBus::instance().send(s);
+            Message p("DisableSave"); p.setTarget("Process"); MessageBus::instance().send(p);
             return "{\"OK\":\"disablesave sent\"}";
         }
         if (upperLine == "STATUS") {

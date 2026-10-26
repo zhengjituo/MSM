@@ -166,6 +166,12 @@ void ModuleProcess::handleState(const msm::Message& msg) {
         if (msg.data.contains("index"))
             idx = static_cast<int>(msg.data.getInt("index"));
         setFrameIndex(idx);
+    } else if (msg.cmd == "EnableSave") {
+        saveFlag_ = true;
+        std::cout << "[" << name_ << "] Save flag ON (applied at next start)\n";
+    } else if (msg.cmd == "DisableSave") {
+        saveFlag_ = false;
+        std::cout << "[" << name_ << "] Save flag OFF (applied at next start)\n";
     }
 }
 
@@ -199,10 +205,12 @@ void ModuleProcess::onStart() {
         lastI_[i].store(0.0);
     }
     bunchIdStep_ = 10;
+    saveEnabled_ = saveFlag_.load();
     consuming_ = true;
     for (int i = 0; i < nCh_; i++) lastPeekedReadPos_[i] = -1;
     std::cout << "[" << name_ << "] Full processing (message-driven, " << nCh_
-              << " ch, batch=" << batchSize_ << ")\n";
+              << " ch, batch=" << batchSize_
+              << ", saveRing=" << (saveEnabled_.load() ? "on" : "off") << ")\n";
 }
 
 void ModuleProcess::onStop() {
@@ -372,14 +380,15 @@ void ModuleProcess::doConsumeOnce() {
             size_t got = rings_[i]->readData(batchBuf_.data(), readBytes);
             if (got == 0) continue;
 
-            if (saveRing_)
+            if (saveEnabled_.load() && saveRing_)
                 saveRing_->writeFromDevice(batchBuf_.data(), got);
 
             size_t actualFrames = got / flen;
             processedFrames_[i].fetch_add(actualFrames);
             lastWritePos_[i].store(lastWritePos_[i].load() + got);
             std::cout << "[" << name_ << "] ch" << (i + 1)
-                      << " flush=" << actualFrames << " -> saveRing\n";
+                      << " flush=" << actualFrames
+                      << (saveEnabled_.load() ? " -> saveRing" : " (discarded)") << "\n";
         }
         if (allEmpty) {
             flushing_ = false;
@@ -406,12 +415,13 @@ void ModuleProcess::doConsumeOnce() {
     int64_t curBatch = processedBatches_[0].load() + 1;
 
     // Check saveRing space before reading: need room for all channels
+    //（保存关闭时不写 saveRing，无需检查空间）
     size_t totalNeeded = 0;
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
         totalNeeded += batchSize_ * flen;
     }
-    if (saveRing_ && saveRing_->availableSpace() < totalNeeded) {
+    if (saveEnabled_.load() && saveRing_ && saveRing_->availableSpace() < totalNeeded) {
         return;
     }
 
@@ -435,8 +445,8 @@ void ModuleProcess::doConsumeOnce() {
         }
     }
 
-    // 一次性写入 saveRing
-    if (totalBytes > 0 && saveRing_)
+    // 一次性写入 saveRing（保存关闭时跳过：省 92MB/批 的白拷贝）
+    if (saveEnabled_.load() && totalBytes > 0 && saveRing_)
         saveRing_->writeFromDevice(batchBuf_.data(), totalBytes);
 
     if (totalBytes == 0) return;

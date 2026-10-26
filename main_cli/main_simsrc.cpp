@@ -208,6 +208,9 @@ int main() {
             return;
         }
         clearStartError();
+        // 保存开关（app_config.startStorage）：Storage/Process 同时收，本次 start 生效
+        send(cfg2.start_storage ? "EnableSave >> -@ Storage" : "DisableSave >> -@ Storage");
+        send(cfg2.start_storage ? "EnableSave >> -@ Process" : "DisableSave >> -@ Process");
         send("Start >> -@ Storage");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         send("Start >> -@ Process");
@@ -270,10 +273,12 @@ int main() {
             }
             if (line == "enablesave") {
                 send("EnableSave >> -@ Storage");
+                send("EnableSave >> -@ Process");
                 continue;
             }
             if (line == "disablesave") {
                 send("DisableSave >> -@ Storage");
+                send("DisableSave >> -@ Process");
                 continue;
             }
             if (line == "status") {
