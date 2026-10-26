@@ -86,3 +86,19 @@ a2ea90a  T7 docs: 真机验证结果 + 同步要点 + 卡数变更限制
   scope=add-card/remove-card）；新增 1073 通道参数深拷贝自已有卡、slot 按机箱
   扫描选空位或手输；slot 冲突/重复 3010/超 4 卡报错。写入待使用配置，
   下次 Run 生效。API 级测试 8 项全过 + 真机 2 卡 8ch E2E 通过
+- 2026-10-26 双卡深挖：三个问题定位并修复，真机逐项验证
+  - 双卡丢帧 ~8%（100ms 对齐 dist 退化 15.7ms）：8ch 单线程串行读，
+    pass 周期 ~175ms > SDK 16MB 缓冲保持时间 ~139ms → 缓冲 wrap 覆盖；
+    改每卡一个专属读线程 + SDK 缓冲 32MB + 连续帧单次大 memcpy（`91c412a`）。
+    修后双卡 8ch×289 批零 gap、dist=0 全中；单卡回归 291/291
+  - 存盘链路空转：startStorage=false 时 Process 仍写 saveRing、Storage 排空即丢弃
+    （92MB×2 拷贝/批）；Process 按保存开关门控写 ring，并接线此前解析了但从未
+    生效的 startStorage 配置项（`a707931`）。后端 2.2 核 → 1.5 核；
+    启存路径真机验证（8ch×115MB/s 写 NVMe、512MB 轮转）
+  - 逐通道 bunch 相位（10~80ms 固定相位、每 run 不同、零漂移）：触发寄存器与
+    厂商 demo 不一致——TrigMode 传 "normal" 字符串被 SDK 静默拒绝（StringToUint32，
+    与 TrigSource 同坑），FPGA 停默认模式，双卡下与 3010 广播参考不锁相；
+    四项对齐 demo：TrigMode→2、TrigPolarity→1、GlobalTrigMode=0、
+    ExternalTrigLevel=20（`f6b8c07`）。修后 8ch×288 批偏差 0µs；
+    二分实验排除 GlobalTrigMode（与/或逻辑非根因）
+  - 决策：不报厂商——丢帧与相位均软件侧解决，无待确认的硬件缺陷
