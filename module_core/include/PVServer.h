@@ -11,6 +11,7 @@
 #include <memory>
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <fstream>
 
 namespace msm {
@@ -18,7 +19,7 @@ namespace msm {
 struct PVVarConfig {
     std::string name;
     std::string type;
-    size_t offset = 0;
+    size_t offset = 0;      // used only for offset-mode (legacy getVarBase) modules
     size_t len = 0;
     size_t nelm = 0;
     std::string dir = "io";
@@ -39,9 +40,14 @@ struct PVVarRuntime {
     std::string dir;
     size_t offset = 0;
     size_t length = 0;
-    void* modPtr = nullptr;
+    void* modPtr = nullptr;     // offset mode
     bool isArray = false;
     size_t nelm = 1;
+    bool viaVarTable = false;   // true = read through Module::getVars()
+
+    // throttle state (only touched by the publisher thread)
+    std::string lastPushed;
+    bool hasPushed = false;
 };
 
 struct PVModuleRuntime {
@@ -60,6 +66,9 @@ struct CAChannelContext {
     long lastPushedInt = 0;
     double lastPushedDouble = 0;
     std::string pvName;
+    // echo suppression: value we just wrote from an external pvput
+    bool suppressPending = false;
+    std::string suppressValue;
 };
 
 class PVServer : public Module {
@@ -69,6 +78,15 @@ public:
 
     bool loadConfig(const std::string& jsonPath);
     void setModuleMemory(const std::string& moduleName, void* base, size_t size);
+
+    // Register every MessageBus module that exposes vars through VarTable.
+    // Call after all modules are created and registered.
+    void attachVarTableModules();
+
+    // Publish rate in Hz, clamped to [2, 10]. Default 285ms cycle (3.508Hz).
+    // Accepts a rate in Hz because that is what users reason about.
+    void setPublishRateHz(double hz);
+    double getPublishRateHz() const { return pvRateHz_.load(); }
 
     void start() override;
     void stop() override;
@@ -84,14 +102,20 @@ public:
                    const std::string& dbPath = "msm_pvs.db");
     void onMonitorUpdate(const std::string& pvName, long dbrType, const void* data);
 
+    // Force one publish cycle now (used right after start and by tests).
+    void publishOnce(bool onlyChanged);
+
+    size_t pvCount() const { return varMap_.size(); }
+
 private:
-    void writeMemory(void* ptr, const std::string& type, const std::string& value);
-    std::string readMemory(void* ptr, const std::string& type);
-    void pushToIOC(const std::string& pvName);
+    std::string readMemory(void* ptr, const std::string& type) const;
+    std::string readVar(PVVarRuntime& vr);
+    bool pushToIOC(const std::string& pvName, PVVarRuntime& vr);
     void pushAllToIOC();
     void subscribeAll();
     bool caInitChannels();
     void caCleanup();
+    void publisherLoop();
 
     pid_t spawnIOC();
     void killIOC();
@@ -99,6 +123,12 @@ private:
     std::string prefix_;
     int snapshotInterval_ = 5;
     std::atomic<bool> stopped_{false};
+
+    // publish throttle
+    std::atomic<double> pvRateHz_{3.508};
+    std::atomic<bool> publisherRunning_{false};
+    std::thread publisherThread_;
+    std::mutex pushMtx_;   // serialises pushToIOC across message + publisher threads
 
     std::vector<PVModuleConfig> config_;
     std::vector<PVModuleRuntime> modules_;

@@ -22,6 +22,10 @@ public:
     void registerModule(Module* mod);
     void unregisterModule(const std::string& name);
     Module* findModule(const std::string& name);
+
+    // Snapshot of all registered modules. Used by interface services
+    // (PVServer/RESTServer) that need to enumerate modules generically.
+    std::vector<Module*> modules();
     
     void send(const Message& msg);
     Message sendAndWait(Message& msg, int timeout_ms = 5000);

@@ -30,6 +30,15 @@ target_link_libraries(msm_cli_hwdaq
     CxDeviceCore xdma_api2 pthread
 )
 
+# PyDM subprocess 调用的配置编辑 CLI（meta / get / save / save-app）
+add_executable(msm_cli_config msm_cli_config.cpp)
+set_target_properties(msm_cli_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
+target_compile_definitions(msm_cli_config PRIVATE MSM_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(msm_cli_config
+    module_config
+    msm_core
+)
+
 add_executable(msm_ipc_shell msm_ipc_shell.cpp)
 set_target_properties(msm_ipc_shell PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TARGET_DIR})
 target_link_libraries(msm_ipc_shell pthread)
