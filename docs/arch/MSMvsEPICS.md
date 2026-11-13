@@ -2,7 +2,7 @@
 
 ## 概述
 
-| 维度 | EPICS PV | MSM (Message-driven State Machine) |
+| 维度 | EPICS PV | MSM (Message-based State Machine) |
 |------|----------|--------------------------------------|
 | **核心抽象** | 值 (Key-Value) | 消息/任务 (事件驱动) |
 | **架构分类** | 实时数据库/SCADA | 事件驱动架构 + Actor 模型 |
