@@ -32,22 +32,24 @@
 
 ## 目录结构
 
-| 目录 | 职责 |
-|:--|:--|
-| `module_core/` | 框架核心：MessageBus、Module 基类、VarTable、接口层 |
-| `module_config/` | 配置模块，负责 pending 到 runtime 的交接 |
-| `module_daq/` | 采集模块，PXIe 1073 + 3010 硬件控制 |
-| `module_process/` | 帧解析与特征提取（Vpp、X、Y、光强、波形） |
-| `module_storage/` | 批量落盘与文件轮转 |
-| `module_simsource/` | 仿真数据源，无硬件时替换采集卡 |
-| `main_cli/` | CLI 入口，内建 IPC server |
-| `main_webui/` | 浏览器监控入口，IPC 转 HTTP 与 SSE，ECharts 绘图 |
-| `main_epics/` | EPICS CA 桥与 PyDM 控制界面 |
-| `config/` | 共享配置，`pv_map.json` 是 PV 的唯一真源 |
-| `sdk_include/` | 硬件 SDK 头文件 |
-| `docs/`、`tasks/` | 设计文档与可追溯的任务流水 |
+框架核心只有一个目录，其余全部是可替换的实例。换一套硬件、换一类业务，核心代码不动。
 
-另有 `module_calculator/`、`module_datachannel/`、`main_config_editor/`、`tools/` 等辅助模块，按需使用。
+| 类别 | 目录 | 职责 |
+|:--|:--|:--|
+| **框架核心** | `module_core/` | 唯一的框架代码：消息模型与 MessageBus、Module 基类、VarTable，以及 IPC、REST、EPICS 接口层 |
+| 实例：业务模块 | `module_daq/` | 采集实例，PXIe 1073 + 3010 硬件控制 |
+| | `module_process/` | 帧解析与特征提取（Vpp、X、Y、光强、波形） |
+| | `module_storage/` | 批量落盘与文件轮转 |
+| | `module_config/` | 配置实例，负责 pending 到 runtime 的交接 |
+| | `module_simsource/` | 仿真数据源，替代采集卡 |
+| 实例：启动入口 | `main_cli/` | CLI 入口，内建 IPC server |
+| | `main_webui/` | 浏览器监控入口，IPC 转 HTTP 与 SSE，ECharts 绘图 |
+| | `main_epics/` | EPICS CA 桥与 PyDM 控制界面 |
+| 实例：配置与依赖 | `config/` | 共享配置，`pv_map.json` 是 PV 的唯一真源 |
+| | `sdk_include/` | 硬件 SDK 头文件 |
+| 文档 | `docs/`、`tasks/` | 设计文档与可追溯的任务流水 |
+
+`module_calculator/`、`module_datachannel/`、`main_config_editor/`、`tools/` 同样是实例，按需取用。
 
 ## 用法
 
