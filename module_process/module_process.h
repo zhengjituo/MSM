@@ -97,7 +97,11 @@ private:
 
     std::array<std::atomic<int64_t>, MAX_CH> lastTrigId_{};
     std::array<std::atomic<int64_t>, MAX_CH> lastBunchId_{};
+    std::array<std::atomic<double>, MAX_CH> lastMin_{};
+    std::array<std::atomic<double>, MAX_CH> lastMax_{};
+    std::array<std::atomic<double>, MAX_CH> lastSumL_{};
     std::array<std::atomic<double>, MAX_CH> lastSumH_{};
+    std::array<std::atomic<double>, MAX_CH> lastVpp_{};
     std::array<std::atomic<double>, MAX_CH> lastX_{};
     std::array<std::atomic<double>, MAX_CH> lastY_{};
     std::array<std::atomic<double>, MAX_CH> lastI_{};
@@ -106,6 +110,22 @@ private:
     std::vector<uint8_t> batchBuf_;
     std::atomic<int> frameIndex_{-1};  // -1 = auto-align to 100ms boundary
     int bunchIdStep_ = 10;
+
+    // Waveform snapshot for PV publication, guarded by batchMutex_.
+    // Fixed capacity keeps the PV waveform record length constant.
+    static constexpr size_t WAVE_MAX = 4096;
+    std::array<std::vector<uint16_t>, MAX_CH> lastWave_;
+    std::array<int, MAX_CH> lastWaveOffset_{};
+    std::array<uint32_t, MAX_CH> lastWaveScale_{};
+    std::array<uint16_t, MAX_CH> lastWaveRange_{};
+    std::array<bool, MAX_CH> hasWave_{};
+    std::atomic<int64_t> batchNo_{0};
+
+public:
+    // Thread-safe copy of the most recent waveform for one channel.
+    bool getWaveSnapshot(int ch, std::vector<uint16_t>& out,
+                         int& offset, uint32_t& scale, uint16_t& range) const;
+
 };
 
 #endif

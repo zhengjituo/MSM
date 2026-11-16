@@ -175,12 +175,6 @@ void ModuleDAQ::handleState(const msm::Message& msg) {
         if (hwReady_.load()) onStop();
     } else if (msg.cmd == "Reset") {
         onReset();
-    } else if (msg.cmd == "Status") {
-        msm::Message response("Response");
-        response.setTarget(msg.getSender());
-        response.setCorrelationId(msg.getCorrelationId());
-        onStatus(response);
-        msm::MessageBus::instance().send(response);
     }
 }
 

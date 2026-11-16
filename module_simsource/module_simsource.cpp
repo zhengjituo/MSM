@@ -96,12 +96,6 @@ void ModuleSim::handleState(const msm::Message& msg) {
         onStop();
     } else if (msg.cmd == "Reset") {
         onReset();
-    } else if (msg.cmd == "Status") {
-        msm::Message response("Response");
-        response.setTarget(msg.getSender());
-        response.setCorrelationId(msg.getCorrelationId());
-        onStatus(response);
-        msm::MessageBus::instance().send(response);
     }
 }
 
@@ -220,10 +214,17 @@ void ModuleSim::buildFrame(uint8_t* buf, size_t frameSizeP, int /*ch*/,
     buf[19] = (uint8_t)(trigId >> 8);
     buf[20] = (uint8_t)(trigId);
 
-    // 波形数据: 1, 2, 3, ... (TrigLength * 2 字节)
-    size_t waveBytes = frameSizeP - kHeaderSize - kTrailerSize;
-    for (size_t w = 0; w < waveBytes; w++)
-        buf[kHeaderSize + w] = (uint8_t)((w + 1) & 0xFF);
+    // 波形数据：16 位递增斜坡（大端，与 frame_parser 的 readU16BE 一致）。
+    // 注意：不能按"每个字节 +1"来填，那样两个字节拼成 16 位数后每 128 个
+    // 采样就会回绕一次（65280 → 258），画出来是锯齿而非递增。
+    {
+        size_t nSamples = (frameSizeP - kHeaderSize - kTrailerSize) / 2;
+        for (size_t i = 0; i < nSamples; i++) {
+            uint16_t v = (uint16_t)(i * 128);      // 0 .. 65408，单调递增
+            buf[kHeaderSize + i * 2]     = (uint8_t)(v >> 8);
+            buf[kHeaderSize + i * 2 + 1] = (uint8_t)(v & 0xFF);
+        }
+    }
 
     // 尾段
     size_t trailerOff = frameSizeP - kTrailerSize;

@@ -294,7 +294,7 @@ function render(d) {
            + '<td>' + (ch.daq_frames || 0).toLocaleString() + '</td>'
            + '<td>' + (ch.proc_frames || 0).toLocaleString() + '</td>'
            + '<td>' + (ch.proc_batches || 0).toLocaleString() + '</td>'
-           + '<td>' + (ch.saved_frames || 0).toLocaleString() + '</td></tr>';
+           + '<td>' + (ch.consumed_frames || 0).toLocaleString() + '</td></tr>';
     }
     i = j;
   }

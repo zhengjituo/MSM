@@ -155,12 +155,6 @@ void ModuleProcess::handleState(const msm::Message& msg) {
         onStart();
     } else if (msg.cmd == "Stop") {
         onStop();
-    } else if (msg.cmd == "Status") {
-        msm::Message response("Response");
-        response.setTarget(msg.getSender());
-        response.setCorrelationId(msg.getCorrelationId());
-        onStatus(response);
-        msm::MessageBus::instance().send(response);
     } else if (msg.cmd == "SetFrameIndex") {
         int idx = -1;
         if (msg.data.contains("index"))
@@ -293,13 +287,19 @@ void ModuleProcess::registerVars() {
         declareVar("ch" + idx + "_batches", processedBatches_[i]);
         declareVar("ch" + idx + "_trig_id", lastTrigId_[i]);
         declareVar("ch" + idx + "_bunch_id", lastBunchId_[i]);
+        declareVar("ch" + idx + "_min", lastMin_[i]);
+        declareVar("ch" + idx + "_max", lastMax_[i]);
+        declareVar("ch" + idx + "_sum_l", lastSumL_[i]);
         declareVar("ch" + idx + "_sum_h", lastSumH_[i]);
+        declareVar("ch" + idx + "_vpp", lastVpp_[i]);
         if (i == 0) {
             declareVar("x_pos", lastX_[i]);
             declareVar("y_pos", lastY_[i]);
             declareVar("intensity", lastI_[i]);
         }
     }
+    declareVar("batch_no", batchNo_, "o");
+    declareVar("frame_index", frameIndex_);
 }
 
 void ModuleProcess::extractFrame(const uint8_t* frame, size_t flen, int ch) {
@@ -331,12 +331,45 @@ void ModuleProcess::extractFrame(const uint8_t* frame, size_t flen, int ch) {
 
     lastTrigId_[ch].store((int64_t)hdr.trig_id);
     lastBunchId_[ch].store((int64_t)cal.bunch_id);
+    lastMin_[ch].store(cal.min_val);
+    lastMax_[ch].store(cal.max_val);
+    lastSumL_[ch].store(cal.sum_l);
     lastSumH_[ch].store(cal.sum_h);
+    lastVpp_[ch].store(cal.vpp);
     if (ch == 0) {
         lastX_[0].store(cal.x);
         lastY_[0].store(cal.y);
         lastI_[0].store(cal.i);
     }
+
+    // Keep an immutable waveform snapshot for the PV publisher. Truncating to
+    // WAVE_MAX keeps the PV record length constant across TrigLength changes.
+    {
+        std::lock_guard<std::mutex> lock(batchMutex_);
+        const auto& samples = batchData_[ch].wave_raw;
+        if (!samples.empty()) {
+            size_t n = samples.size() < WAVE_MAX ? samples.size() : WAVE_MAX;
+            lastWave_[ch].assign(samples.begin(), samples.begin() + n);
+            lastWaveOffset_[ch] = batchData_[ch].wave_offset;
+            lastWaveScale_[ch] = batchData_[ch].wave_scale;
+            lastWaveRange_[ch] = batchData_[ch].wave_range;
+            hasWave_[ch] = true;
+        }
+    }
+}
+
+bool ModuleProcess::getWaveSnapshot(int ch, std::vector<uint16_t>& out,
+                                    int& offset, uint32_t& scale,
+                                    uint16_t& range) const
+{
+    if (ch < 0 || ch >= MAX_CH) return false;
+    std::lock_guard<std::mutex> lock(batchMutex_);
+    if (!hasWave_[ch] || lastWave_[ch].empty()) return false;
+    out = lastWave_[ch];
+    offset = lastWaveOffset_[ch];
+    scale = lastWaveScale_[ch];
+    range = lastWaveRange_[ch];
+    return true;
 }
 
 int ModuleProcess::detectBunchIdStep(const uint8_t* batchBuf, size_t flen, size_t nFrames) const {
@@ -503,6 +536,7 @@ void ModuleProcess::doConsumeOnce() {
         extractFrame(frame, flen, i);
         batchData_[i].count = 1;
         batchData_[i].batchNo = curBatch;
+        batchNo_.store(curBatch);
     }
 
     // Print per-channel log line (first frame bunch_id)

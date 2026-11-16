@@ -1,0 +1,364 @@
+{
+    "_comment": "MSM EPICS PV 映射 —— 唯一人写的地方。新增/移除对外 PV 只改这里；.db 与 pydm .ui 都由它生成。",
+    "_prefix_note": "pv 名使用 ${P}${I} 前缀宏，值来自 config/pre.cfg（或环境变量 MSM_P / MSM_I）。",
+    "_rate_note": "rate_hz 为分组推送频率，允许范围 2-10Hz；wave_nelm 必须与 EPICS waveform 记录的 NELM 一致。",
+    "ipc": "/tmp/msm_daq.sock",
+    "ioc": {
+        "addr_list": "127.0.0.1:5064"
+    },
+    "_control_note": "PyDM ==CA==> 桥 ==IPC==> backend。PyDM 不连 socket，只写下面这些 PV；桥负责转发并回写 resp/状态。",
+    "control": {
+        "commands": [
+            {
+                "pv": "${P}${I}CTRL:start",
+                "cmd": "START"
+            },
+            {
+                "pv": "${P}${I}CTRL:stop",
+                "cmd": "STOP"
+            },
+            {
+                "pv": "${P}${I}CTRL:quit",
+                "cmd": "QUIT"
+            }
+        ],
+        "save_pv": {
+            "pv": "${P}${I}CTRL:save_enable",
+            "on": "ENABLESAVE",
+            "off": "DISABLESAVE"
+        },
+        "msg_pv": {
+            "pv": "${P}${I}CTRL:msg"
+        },
+        "_frame_index_note": "stringout 的 VAL 只有 40 字符，塞不下 'MSG SetFrameIndex >> index=N -@ Process'，故用数值 PV 由桥拼命令。",
+        "frame_index_pv": {
+            "pv": "${P}${I}CTRL:set_frame_index"
+        },
+        "status": {
+            "backend_alive": "${P}${I}CTRL:backend_alive",
+            "daq_running": "${P}${I}CTRL:daq_running",
+            "resp": "${P}${I}CTRL:resp"
+        }
+    },
+    "groups": {
+        "fast": {
+            "rate_hz": 10,
+            "_note": "高频：位置与强度，客户看趋势曲线",
+            "vars": [
+                {
+                    "from": "Process:x_pos",
+                    "pv": "${P}${I}Process:x_pos",
+                    "egu": "mm",
+                    "prec": 3
+                },
+                {
+                    "from": "Process:y_pos",
+                    "pv": "${P}${I}Process:y_pos",
+                    "egu": "mm",
+                    "prec": 3
+                },
+                {
+                    "from": "Process:intensity",
+                    "pv": "${P}${I}Process:intensity",
+                    "egu": "a.u.",
+                    "prec": 3
+                }
+            ]
+        },
+        "slow": {
+            "rate_hz": 2,
+            "_note": "低频：计数器与特征表，2Hz 足以表达速率",
+            "vars": [
+                {
+                    "from": "Process:batch_no",
+                    "pv": "${P}${I}Process:batch_no",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:frame_index",
+                    "pv": "${P}${I}Process:frame_index",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch1_frames",
+                    "pv": "${P}${I}DAQ:ch1_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch2_frames",
+                    "pv": "${P}${I}DAQ:ch2_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch3_frames",
+                    "pv": "${P}${I}DAQ:ch3_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch4_frames",
+                    "pv": "${P}${I}DAQ:ch4_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch1_frames",
+                    "pv": "${P}${I}Process:ch1_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch1_batches",
+                    "pv": "${P}${I}Process:ch1_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch1_trig_id",
+                    "pv": "${P}${I}Process:ch1_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch1_bunch_id",
+                    "pv": "${P}${I}Process:ch1_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch1_min",
+                    "pv": "${P}${I}Process:ch1_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch1_max",
+                    "pv": "${P}${I}Process:ch1_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch1_sum_l",
+                    "pv": "${P}${I}Process:ch1_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch1_sum_h",
+                    "pv": "${P}${I}Process:ch1_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch1_vpp",
+                    "pv": "${P}${I}Process:ch1_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch2_frames",
+                    "pv": "${P}${I}Process:ch2_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch2_batches",
+                    "pv": "${P}${I}Process:ch2_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch2_trig_id",
+                    "pv": "${P}${I}Process:ch2_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch2_bunch_id",
+                    "pv": "${P}${I}Process:ch2_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch2_min",
+                    "pv": "${P}${I}Process:ch2_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch2_max",
+                    "pv": "${P}${I}Process:ch2_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch2_sum_l",
+                    "pv": "${P}${I}Process:ch2_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch2_sum_h",
+                    "pv": "${P}${I}Process:ch2_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch2_vpp",
+                    "pv": "${P}${I}Process:ch2_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch3_frames",
+                    "pv": "${P}${I}Process:ch3_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch3_batches",
+                    "pv": "${P}${I}Process:ch3_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch3_trig_id",
+                    "pv": "${P}${I}Process:ch3_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch3_bunch_id",
+                    "pv": "${P}${I}Process:ch3_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch3_min",
+                    "pv": "${P}${I}Process:ch3_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch3_max",
+                    "pv": "${P}${I}Process:ch3_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch3_sum_l",
+                    "pv": "${P}${I}Process:ch3_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch3_sum_h",
+                    "pv": "${P}${I}Process:ch3_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch3_vpp",
+                    "pv": "${P}${I}Process:ch3_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch4_frames",
+                    "pv": "${P}${I}Process:ch4_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch4_batches",
+                    "pv": "${P}${I}Process:ch4_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch4_trig_id",
+                    "pv": "${P}${I}Process:ch4_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch4_bunch_id",
+                    "pv": "${P}${I}Process:ch4_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch4_min",
+                    "pv": "${P}${I}Process:ch4_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch4_max",
+                    "pv": "${P}${I}Process:ch4_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch4_sum_l",
+                    "pv": "${P}${I}Process:ch4_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch4_sum_h",
+                    "pv": "${P}${I}Process:ch4_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch4_vpp",
+                    "pv": "${P}${I}Process:ch4_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Storage:ch1_consumed_frames",
+                    "pv": "${P}${I}Storage:ch1_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Storage:ch2_consumed_frames",
+                    "pv": "${P}${I}Storage:ch2_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Storage:ch3_consumed_frames",
+                    "pv": "${P}${I}Storage:ch3_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Storage:ch4_consumed_frames",
+                    "pv": "${P}${I}Storage:ch4_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                }
+            ]
+        },
+        "wave": {
+            "rate_hz": 5,
+            "_note": "波形：独立分组，NELM 固定，避免 PyDM 侧长度变化",
+            "wave_nelm": 4096,
+            "channels": [
+                1,
+                2,
+                3,
+                4
+            ],
+            "vars": [],
+            "pv_pattern": "${P}${I}Process:wave_ch{ch}"
+        }
+    }
+}

@@ -11,9 +11,10 @@ namespace msm {
 void VarTable::declare(const std::string& name, const std::string& type,
                        std::function<std::string()> reader,
                        std::function<bool(const std::string&)> writer,
-                       const std::string& dir)
+                       const std::string& dir,
+                       bool publish)
 {
-    entries_[name] = {type, dir, std::move(reader), std::move(writer)};
+    entries_[name] = {type, dir, publish, std::move(reader), std::move(writer)};
 }
 
 std::string VarTable::read(const std::string& name) const {
@@ -29,6 +30,28 @@ bool VarTable::write(const std::string& name, const std::string& value) {
 
 bool VarTable::has(const std::string& name) const {
     return entries_.find(name) != entries_.end();
+}
+
+bool VarTable::isPublished(const std::string& name) const {
+    auto it = entries_.find(name);
+    return it != entries_.end() && it->second.publish;
+}
+
+std::string VarTable::typeOf(const std::string& name) const {
+    auto it = entries_.find(name);
+    return it != entries_.end() ? it->second.type : "";
+}
+
+std::string VarTable::dirOf(const std::string& name) const {
+    auto it = entries_.find(name);
+    return it != entries_.end() ? it->second.dir : "";
+}
+
+std::vector<std::string> VarTable::publishedNames() const {
+    std::vector<std::string> n;
+    for (auto& [k, v] : entries_)
+        if (v.publish) n.push_back(k);
+    return n;
 }
 
 std::map<std::string, std::string> VarTable::readAll() const {
@@ -92,6 +115,7 @@ std::string VarTable::toJSON(const std::string& prefix,
 
     bool first = true;
     for (auto& [name, entry] : entries_) {
+        if (!entry.publish) continue;
         if (!first) os << ",\n";
         first = false;
         os << "                {"
@@ -186,12 +210,60 @@ void Module::runLoop() {
         }
 
         if (!msg.cmd.empty()) {
+            // Built-in SetVar: external (PV/REST/CLI) variable writes must
+            // enter through the message path so the module stays the single
+            // source of truth. Subclasses may override by handling SetVar.
+            if (msg.cmd == "SetVar") {
+                std::string var = msg.data.get("var");
+                std::string value = msg.data.get("value");
+                bool ok = setVarByName(var, value);
+                if (msg.isAwaitResponse()) {
+                    Message resp("Response");
+                    resp.setTarget(msg.getSender());
+                    resp.setCorrelationId(msg.getCorrelationId());
+                    resp.data.set("ok", ok ? "1" : "0");
+                    resp.data.set("var", var);
+                    MessageBus::instance().send(resp);
+                }
+                continue;
+            }
+            // Built-in Status: seed the response with every VarTable entry,
+            // then let the subclass append module-specific extras (e.g. batch
+            // feature rows that are not simple declared vars).
+            if (msg.cmd == "Status") {
+                Message resp = fillStatus(msg);
+                MessageBus::instance().send(resp);
+                continue;
+            }
             handleState(msg);
         } else {
             onIdle();
         }
     }
     running_ = false;
+}
+
+Message Module::fillStatus(const Message& req) {
+    Message resp("Response");
+    resp.setTarget(req.getSender());
+    resp.setCorrelationId(req.getCorrelationId());
+
+    // 1) VarTable 自动导出（declareVar 注册的全部变量）
+    ModuleVars* v = getVars();
+    if (v) {
+        for (auto& [k, val] : v->list())
+            resp.data.set(k, val);
+    }
+
+    // 2) 子类补充非 VarTable 的字段
+    onStatus(resp);
+    return resp;
+}
+
+bool Module::setVarByName(const std::string& name, const std::string& value) {
+    ModuleVars* v = getVars();
+    if (!v) return false;
+    return v->set(name, value);
 }
 
 } // namespace msm

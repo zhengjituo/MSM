@@ -69,7 +69,22 @@ bool PVServer::loadConfig(const std::string& jsonPath)
     }
 
     prefix_ = j.value("prefix", prefix_);
-    snapshotInterval_ = j.value("snapshot_interval", 5);
+    snapshotInterval_ = j.value("snapshot_interval", snapshotInterval_);
+
+    // Publish rate: accept rate_hz (preferred) or publish_interval_ms.
+    double hz = pvRateHz_.load();
+    if (j.contains("rate_hz")) {
+        hz = j.value("rate_hz", hz);
+    } else if (j.contains("publish_interval_ms")) {
+        int ms = j.value("publish_interval_ms", 285);
+        if (ms > 0) hz = 1000.0 / (double)ms;
+    }
+    setPublishRateHz(hz);
+
+    if (!j.contains("modules")) {
+        std::cout << "[PVServer] No modules in config (VarTable mode only)\n";
+        return true;
+    }
 
     for (auto& jmod : j["modules"]) {
         PVModuleConfig cfg;
@@ -80,7 +95,7 @@ bool PVServer::loadConfig(const std::string& jsonPath)
             PVVarConfig vc;
             vc.name = jvar["name"];
             vc.type = jvar["type"];
-            vc.offset = jvar["offset"];
+            vc.offset = jvar.value("offset", 0);
             vc.len = jvar.value("len", 4);
             vc.nelm = jvar.value("nelm", 0);
             vc.dir = jvar.value("dir", "io");
@@ -88,19 +103,15 @@ bool PVServer::loadConfig(const std::string& jsonPath)
             if (jvar.contains("epics")) {
                 auto& ef = jvar["epics"];
                 if (ef.is_boolean()) vc.epics = ef.get<bool>();
-                else vc.epics = ef.get<int>() != 0;
+                else vc.epics = ef.is_number_integer() && ef.get<int>() != 0;
             }
-            vc.pvName = jvar.value("pv", "");
-            if (vc.pvName.empty()) {
-                vc.pvName = prefix_ + ":" + cfg.name + ":" + vc.name;
-            }
+            vc.pvName = prefix_ + ":" + cfg.name + ":" + vc.name;
             cfg.vars.push_back(vc);
         }
         config_.push_back(cfg);
         std::cout << "[PVServer] Loaded config: " << cfg.name
                   << " (" << cfg.vars.size() << " vars)\n";
     }
-
     return true;
 }
 
@@ -128,6 +139,7 @@ void PVServer::setModuleMemory(
             vr.modPtr = static_cast<char*>(base) + vc.offset;
             vr.isArray = vc.nelm > 0;
             vr.nelm = vc.nelm > 0 ? vc.nelm : 1;
+            vr.viaVarTable = false;
 
             varMap_[vc.pvName] = vr;
             std::cout << "[PVServer] PV " << vc.pvName
@@ -137,7 +149,51 @@ void PVServer::setModuleMemory(
     }
 }
 
-// ─── Start / Stop ──────────────────────────────────────────────
+void PVServer::attachVarTableModules()
+{
+    for (auto* mod : MessageBus::instance().modules()) {
+        ModuleVars* vars = mod->getVars();
+        if (!vars) continue;
+        auto names = vars->getTypes();
+        for (auto& [vname, vtype] : names) {
+            std::string pvName = prefix_ + ":" + mod->getName() + ":" + vname;
+            if (varMap_.count(pvName)) continue;
+
+            PVVarRuntime vr;
+            vr.moduleName = mod->getName();
+            vr.varName = vname;
+            vr.type = vtype;
+            vr.dir = "io";
+            vr.nelm = 1;
+            vr.isArray = (vtype.size() > 2 && vtype.substr(vtype.size() - 2) == "[]");
+            vr.viaVarTable = true;
+            varMap_[pvName] = vr;
+        }
+        std::cout << "[PVServer] Attached " << mod->getName()
+                  << " (" << vars->getTypes().size() << " vars, VarTable)\n";
+    }
+}
+
+void PVServer::setPublishRateHz(double hz)
+{
+    if (hz < 2.0) hz = 2.0;
+    if (hz > 10.0) hz = 10.0;
+    pvRateHz_.store(hz);
+}
+
+std::string PVServer::readVar(PVVarRuntime& vr)
+{
+    if (vr.viaVarTable) {
+        Module* mod = MessageBus::instance().findModule(vr.moduleName);
+        if (!mod) return "";
+        ModuleVars* vars = mod->getVars();
+        if (!vars) return "";
+        auto m = vars->list();
+        auto it = m.find(vr.varName);
+        return it != m.end() ? it->second : "";
+    }
+    return readMemory(vr.modPtr, vr.type);
+}
 
 void PVServer::start()
 {
@@ -152,9 +208,6 @@ void PVServer::start()
     }
 
     Module::start();
-    // NOTE: restore() intentionally omitted here — it would overwrite module memory
-    // that was already initialized by Configure messages. Modules push their own
-    // state to PVs via PV_UPDATE after PVServer is fully started (see main).
 
     if (varMap_.empty()) {
         std::cout << "[PVServer] No PVs to serve\n";
@@ -167,11 +220,9 @@ void PVServer::start()
             std::cerr << "[PVServer] Failed to start IOC\n";
             return;
         }
-        // Wait for IOC to be ready and CA server listening
         std::cout << "[PVServer] Waiting for IOC to start...\n";
-    for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 20; i++) {
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
-            // Try connecting to IOC's CA port
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock >= 0) {
                 struct sockaddr_in addr;
@@ -179,24 +230,27 @@ void PVServer::start()
                 addr.sin_family = AF_INET;
                 addr.sin_port = htons(5064);
                 addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-                if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
-                    close(sock);
-                    break;
-                }
+                bool up = (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0);
                 close(sock);
+                if (up) break;
             }
         }
         if (!caInitChannels()) {
             std::cerr << "[PVServer] CA channel init failed\n";
         }
+
+        // Publisher: throttled, change-only. Runs independently of the
+        // message loop so modules never have to know about PV.
+        publisherRunning_.store(true);
+        publisherThread_ = std::thread([this]() { publisherLoop(); });
     }
 
     if (snapshotInterval_ > 0) {
-        snapshotRunning_ = true;
+        snapshotRunning_.store(true);
         snapshotThread_ = std::thread([this]() {
-            while (snapshotRunning_) {
-                std::this_thread::sleep_for(
-                    std::chrono::seconds(snapshotInterval_));
+            while (snapshotRunning_.load()) {
+                std::this_thread::sleep_for(std::chrono::seconds(snapshotInterval_));
+                if (!snapshotRunning_.load()) break;
                 if (!snapshot("msm_vars.snap")) {
                     std::cerr << "[PVServer] WARNING: snapshot failed\n";
                 }
@@ -208,7 +262,11 @@ void PVServer::start()
 void PVServer::stop()
 {
     if (stopped_.exchange(true)) return;
-    snapshotRunning_ = false;
+
+    publisherRunning_.store(false);
+    if (publisherThread_.joinable()) publisherThread_.join();
+
+    snapshotRunning_.store(false);
     if (snapshotThread_.joinable()) snapshotThread_.join();
 
     caCleanup();
@@ -221,6 +279,58 @@ void PVServer::stop()
     config_.clear();
 
     Module::stop();
+}
+
+// ─── Publisher (throttled, change-only) ───────────────────────
+
+void PVServer::publisherLoop()
+{
+    while (publisherRunning_.load()) {
+        double hz = pvRateHz_.load();
+        if (hz < 1e-6) hz = 3.5;
+        int periodMs = (int)(1000.0 / hz);
+        if (periodMs < 1) periodMs = 1;
+
+        // Sleep in slices so stop() is responsive.
+        int slept = 0;
+        while (publisherRunning_.load() && slept < periodMs) {
+            int slice = (periodMs - slept > 50) ? 50 : (periodMs - slept);
+            std::this_thread::sleep_for(std::chrono::milliseconds(slice));
+            slept += slice;
+        }
+        if (!publisherRunning_.load()) break;
+
+        publishOnce(true);
+    }
+}
+
+void PVServer::publishOnce(bool onlyChanged)
+{
+    if (!iocEnabled_ || iocPID_ <= 0) return;
+    std::lock_guard<std::mutex> lock(pushMtx_);
+    for (auto& [pvName, vr] : varMap_) {
+        auto cit = caChannels_.find(pvName);
+        if (cit == caChannels_.end()) continue;
+        CAChannelContext& ctx = cit->second;
+        if (!ctx.channel || !ctx.connected) continue;
+
+        std::string val = readVar(vr);
+        if (onlyChanged && vr.hasPushed && val == vr.lastPushed) continue;
+
+        // Echo suppression: an external pvput just wrote this value in;
+        // don't bounce it straight back out.
+        if (ctx.suppressPending && val == ctx.suppressValue) {
+            ctx.suppressPending = false;
+            vr.lastPushed = val;
+            vr.hasPushed = true;
+            continue;
+        }
+
+        if (pushToIOC(pvName, vr)) {
+            vr.lastPushed = val;
+            vr.hasPushed = true;
+        }
+    }
 }
 
 // ─── CA init / cleanup ────────────────────────────────────────
@@ -256,30 +366,19 @@ bool PVServer::caInitChannels()
     }
     ca_flush_io();
 
-    // Process events until all channels connect (max 10s)
     int connected = 0;
     for (int wait = 0; wait < 100 && connected < (int)caChannels_.size(); wait++) {
         ca_pend_event(0.1);
         connected = 0;
         for (auto& [pv, ctx] : caChannels_) {
-            if (ctx.channel) {
-                int s = ca_state(static_cast<chid>(ctx.channel));
-                if (s == cs_conn) connected++;
-            }
+            if (ctx.channel && ca_state(static_cast<chid>(ctx.channel)) == cs_conn)
+                connected++;
         }
     }
-    std::cout << "[PVServer] CA connected " << connected << "/" << caChannels_.size()
-              << " (after " << (connected==(int)caChannels_.size() ? "all" : "some") << ")\n";
-    for (auto& [pv, ctx] : caChannels_) {
-        int s = ctx.channel ? ca_state(static_cast<chid>(ctx.channel)) : -1;
-        std::cout << "[PVServer]   " << pv << " state=" << s << "\n";
-    }
-    std::cout << "[PVServer] CA connected " << connected << "/" << n << " channels\n";
+    std::cout << "[PVServer] CA connected " << connected << "/" << n
+              << " channels\n";
 
     subscribeAll();
-
-    pushAllToIOC();
-
     return connected > 0;
 }
 
@@ -307,9 +406,7 @@ void PVServer::subscribeAll()
         if (ret == ECA_NORMAL) {
             ctx.subscription = ev;
             ctx.subscribed = true;
-            std::cout << "[PVServer] Subscribed: " << pvName << "\n";
         } else {
-            std::cerr << "[PVServer] Subscription failed: " << pvName << "\n";
             delete user;
             ctx.subUser = nullptr;
         }
@@ -320,216 +417,14 @@ void PVServer::subscribeAll()
 void PVServer::caCleanup()
 {
     for (auto& [pvName, ctx] : caChannels_) {
-        if (ctx.subscription) {
-            ca_clear_subscription(static_cast<evid>(ctx.subscription));
-        }
-        if (ctx.subUser) {
-            delete static_cast<SubUser*>(ctx.subUser);
-        }
-        if (ctx.channel) {
-            ca_clear_channel(static_cast<chid>(ctx.channel));
-        }
+        if (ctx.subscription) ca_clear_subscription(static_cast<evid>(ctx.subscription));
+        if (ctx.subUser) delete static_cast<SubUser*>(ctx.subUser);
+        if (ctx.channel) ca_clear_channel(static_cast<chid>(ctx.channel));
     }
     caChannels_.clear();
     ca_context_destroy();
 }
 
-// ─── IOC subprocess ────────────────────────────────────────────
-
-pid_t PVServer::spawnIOC()
-{
-    std::string iocPath = iocEpicsBase_ + "/bin/linux-x86_64/softIocPVA";
-
-    int stdinPipe[2];
-    if (pipe(stdinPipe) != 0) {
-        std::cerr << "[PVServer] pipe() failed\n";
-        return -1;
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        std::cerr << "[PVServer] fork() failed\n";
-        close(stdinPipe[0]);
-        close(stdinPipe[1]);
-        return -1;
-    }
-
-    if (pid == 0) {
-        close(stdinPipe[1]);
-        dup2(stdinPipe[0], STDIN_FILENO);
-        close(stdinPipe[0]);
-
-        setenv("EPICS_CAS_INTF_ADDR_LIST", "127.0.0.1", 1);
-        setenv("EPICS_CA_SERVER_PORT", "5064", 1);
-
-        execlp(iocPath.c_str(), "softIocPVA", "-d", iocDBPath_.c_str(), nullptr);
-        std::cerr << "[PVServer] execlp failed: " << iocPath << "\n";
-        _exit(1);
-    }
-
-    close(stdinPipe[0]);
-    iocStdin_ = stdinPipe[1];
-    iocPID_ = pid;
-    std::cout << "[PVServer] IOC started (PID " << pid << ")\n";
-    return pid;
-}
-
-void PVServer::killIOC()
-{
-    if (iocPID_ <= 0) return;
-    if (iocStdin_ >= 0) close(iocStdin_);
-    iocStdin_ = -1;
-    kill(iocPID_, SIGTERM);
-    int status;
-    waitpid(iocPID_, &status, 0);
-    std::cout << "[PVServer] IOC stopped (PID " << iocPID_ << ")\n";
-    iocPID_ = -1;
-}
-
-// ─── Message handling ──────────────────────────────────────────
-
-void PVServer::handleState(const Message& msg)
-{
-    if (msg.cmd == "PV_UPDATE") {
-        std::string moduleName = msg.data.get("module");
-        std::string varName = msg.data.get("var");
-
-        if (varName == "*") {
-            pushAllToIOC();
-            return;
-        }
-        for (auto& [pvName, vr] : varMap_) {
-            if (vr.moduleName == moduleName && vr.varName == varName) {
-                if (iocEnabled_ && iocPID_ > 0) {
-                    pushToIOC(pvName);
-                }
-            }
-        }
-        return;
-    }
-
-
-}
-
-ModuleVars* PVServer::getVars() { return &vars_; }
-
-void PVServer::pushToIOC(const std::string& pvName)
-{
-    auto it = varMap_.find(pvName);
-    if (it == varMap_.end()) return;
-    auto& vr = it->second;
-
-    // Create a fresh channel for the put, then destroy it.
-    // Using permanent channels (caChannels_) for put causes CA interaction
-    // issues with subscriptions on the same channel.
-    chid chan = nullptr;
-    int ret = ca_create_channel(pvName.c_str(), nullptr, nullptr, 20, &chan);
-    if (ret != ECA_NORMAL) {
-        std::cerr << "[PVServer] pushToIOC: create_channel failed for " << pvName << "\n";
-        return;
-    }
-    ca_flush_io();
-    for (int i = 0; i < 20; i++) {
-        ca_pend_event(0.1);
-        if (ca_state(chan) == cs_conn) break;
-    }
-    if (ca_state(chan) != cs_conn) {
-        std::cerr << "[PVServer] pushToIOC: " << pvName << " not connected\n";
-        ca_clear_channel(chan);
-        return;
-    }
-
-    long dbrType = DBR_LONG;
-    if (vr.type == "double" || vr.type == "double[]") dbrType = DBR_DOUBLE;
-
-    if (vr.isArray) {
-        ret = ca_array_put(dbrType, vr.nelm, chan, vr.modPtr);
-    } else if (dbrType == DBR_DOUBLE) {
-        double val = *static_cast<double*>(vr.modPtr);
-        ret = ca_array_put(DBR_DOUBLE, 1, chan, &val);
-    } else {
-        dbr_long_t val = static_cast<dbr_long_t>(*static_cast<int*>(vr.modPtr));
-        ret = ca_array_put(DBR_LONG, 1, chan, &val);
-    }
-    ca_flush_io();
-    ca_pend_io(1.0);
-
-    ca_clear_channel(chan);
-
-    if (ret != ECA_NORMAL) {
-        std::cerr << "[PVServer] pushToIOC " << pvName
-                  << " FAILED: " << ca_message(ret) << "\n";
-    } else {
-        std::cerr << "[PVServer] pushToIOC OK: " << pvName
-                  << " val=" << readMemory(vr.modPtr, vr.type) << "\n";
-    }
-}
-
-// Batch pushToIOC for all PVs with a small delay between each to avoid
-// overwhelming the IOC with temporary channel create/destroy.
-void PVServer::pushAllToIOC()
-{
-    for (auto& [pvName, vr] : varMap_) {
-        pushToIOC(pvName);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-}
-
-void PVServer::onMonitorUpdate(const std::string& pvName, long dbrType, const void* data)
-{
-    auto it = varMap_.find(pvName);
-    if (it == varMap_.end()) return;
-    auto& vr = it->second;
-    if (vr.dir != "i" && vr.dir != "io") return;
-
-    auto cit = caChannels_.find(pvName);
-    if (cit == caChannels_.end()) return;
-    auto& ctx = cit->second;
-
-    if (vr.isArray) {
-        std::memcpy(vr.modPtr, data, vr.length);
-    } else if (dbrType == DBR_DOUBLE) {
-        double val = *static_cast<const double*>(data);
-        if (val != ctx.lastPushedDouble) {
-            std::ostringstream ss; ss << val;
-            writeMemory(vr.modPtr, "double", ss.str());
-        }
-    } else {
-        long val = *static_cast<const long*>(data);
-        if (val != ctx.lastPushedInt) {
-            writeMemory(vr.modPtr, "int", std::to_string(val));
-        }
-    }
-}
-
-// ─── Memory helpers ────────────────────────────────────────────
-
-void PVServer::writeMemory(void* ptr, const std::string& type, const std::string& value)
-{
-    if (!ptr) return;
-    try {
-        if (type == "int") {
-            *static_cast<int*>(ptr) = std::stoi(value);
-        } else if (type == "double") {
-            *static_cast<double*>(ptr) = std::stod(value);
-        } else if (type == "string") {
-            *static_cast<std::string*>(ptr) = value;
-        }
-    } catch (...) {}
-}
-
-std::string PVServer::readMemory(void* ptr, const std::string& type)
-{
-    if (!ptr) return "";
-    if (type == "int") return std::to_string(*static_cast<int*>(ptr));
-    if (type == "double") {
-        std::ostringstream ss; ss << *static_cast<double*>(ptr); return ss.str();
-    }
-    if (type == "string") return *static_cast<std::string*>(ptr);
-    return "";
-}
-
-// ─── Snapshot ──────────────────────────────────────────────────
 
 bool PVServer::snapshot(const std::string& filepath)
 {

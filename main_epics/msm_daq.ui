@@ -1,0 +1,680 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui version="4.0">
+  <class>MSMDaqDisplay</class>
+  <widget class="QWidget" name="MSMDaqDisplay">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>1100</width>
+        <height>900</height>
+      </rect>
+    </property>
+    <property name="windowTitle">
+      <string>MSM DAQ</string>
+    </property>
+    <layout class="QVBoxLayout" name="rootLayout">
+      <item>
+        <widget class="QWidget" name="statusBar">
+          <layout class="QHBoxLayout" name="statusLayout">
+            <item>
+              <widget class="QLabel" name="lblBatchName">
+                <property name="text">
+                  <string>  Batch:  </string>
+                </property>
+              </widget>
+            </item>
+            <item>
+              <widget class="PyDMLabel" name="lblBatch">
+                <property name="channel">
+                  <cstring>ca://${P}${I}Process:batch_no</cstring>
+                </property>
+              </widget>
+            </item>
+            <item>
+              <widget class="QLabel" name="lblFrameName">
+                <property name="text">
+                  <string>  Frame:  </string>
+                </property>
+              </widget>
+            </item>
+            <item>
+              <widget class="PyDMLabel" name="lblFrame">
+                <property name="channel">
+                  <cstring>ca://${P}${I}Process:frame_index</cstring>
+                </property>
+              </widget>
+            </item>
+            <item>
+              <widget class="QLabel" name="spacer">
+                <property name="text">
+                  <string/>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QTabWidget" name="cardTabs">
+          <property name="currentIndex">
+            <number>0</number>
+          </property>
+          <widget class="QWidget" name="tabCard1">
+            <attribute name="title">
+              <string>Card 1 (CH1–CH4)</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="cardLayout1">
+              <item>
+                <widget class="QWidget" name="framePanel1">
+                  <layout class="QGridLayout" name="frameGrid1">
+                    <item row="0" column="0">
+                      <widget class="QLabel" name="hdr_frame_1_0">
+                        <property name="text">
+                          <string>CH</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="1">
+                      <widget class="QLabel" name="hdr_frame_1_1">
+                        <property name="text">
+                          <string>DAQ</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="2">
+                      <widget class="QLabel" name="hdr_frame_1_2">
+                        <property name="text">
+                          <string>Process</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="3">
+                      <widget class="QLabel" name="hdr_frame_1_3">
+                        <property name="text">
+                          <string>Batches</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="4">
+                      <widget class="QLabel" name="hdr_frame_1_4">
+                        <property name="text">
+                          <string>Storage</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="0">
+                      <widget class="QLabel" name="lbl_frame_ch1">
+                        <property name="text">
+                          <string>CH1</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="1">
+                      <widget class="PyDMLabel" name="lbl_daq_ch1">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}DAQ:ch1_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="2">
+                      <widget class="PyDMLabel" name="lbl_proc_ch1">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch1_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="3">
+                      <widget class="PyDMLabel" name="lbl_batches_ch1">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch1_batches</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="4">
+                      <widget class="PyDMLabel" name="lbl_stor_ch1">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Storage:ch1_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="0">
+                      <widget class="QLabel" name="lbl_frame_ch2">
+                        <property name="text">
+                          <string>CH2</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="1">
+                      <widget class="PyDMLabel" name="lbl_daq_ch2">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}DAQ:ch2_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="2">
+                      <widget class="PyDMLabel" name="lbl_proc_ch2">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch2_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="3">
+                      <widget class="PyDMLabel" name="lbl_batches_ch2">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch2_batches</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="4">
+                      <widget class="PyDMLabel" name="lbl_stor_ch2">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Storage:ch2_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="3" column="0">
+                      <widget class="QLabel" name="lbl_frame_ch3">
+                        <property name="text">
+                          <string>CH3</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="3" column="1">
+                      <widget class="PyDMLabel" name="lbl_daq_ch3">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}DAQ:ch3_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="3" column="2">
+                      <widget class="PyDMLabel" name="lbl_proc_ch3">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch3_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="3" column="3">
+                      <widget class="PyDMLabel" name="lbl_batches_ch3">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch3_batches</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="3" column="4">
+                      <widget class="PyDMLabel" name="lbl_stor_ch3">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Storage:ch3_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="0">
+                      <widget class="QLabel" name="lbl_frame_ch4">
+                        <property name="text">
+                          <string>CH4</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="1">
+                      <widget class="PyDMLabel" name="lbl_daq_ch4">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}DAQ:ch4_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="2">
+                      <widget class="PyDMLabel" name="lbl_proc_ch4">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch4_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="3">
+                      <widget class="PyDMLabel" name="lbl_batches_ch4">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Process:ch4_batches</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="4">
+                      <widget class="PyDMLabel" name="lbl_stor_ch4">
+                        <property name="channel">
+                          <cstring>ca://${P}${I}Storage:ch4_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                  </layout>
+                </widget>
+              </item>
+              <item>
+                <widget class="QWidget" name="featPanel1">
+                  <layout class="QVBoxLayout" name="featOuter1">
+                    <item>
+                      <widget class="QWidget" name="idxRow1">
+                        <layout class="QHBoxLayout" name="idxLayout1">
+                          <item>
+                            <spacer name="idxPush1">
+                              <property name="orientation">
+                                <enum>Qt::Horizontal</enum>
+                              </property>
+                              <property name="sizeHint">
+                                <size>
+                                  <width>40</width>
+                                  <height>20</height>
+                                </size>
+                              </property>
+                            </spacer>
+                          </item>
+                          <item>
+                            <widget class="QLabel" name="lblIdxName1">
+                              <property name="text">
+                                <string>Index:</string>
+                              </property>
+                            </widget>
+                          </item>
+                          <item>
+                            <widget class="QLineEdit" name="editFrameIndex">
+                              <property name="maximumWidth">
+                                <number>90</number>
+                              </property>
+                            </widget>
+                          </item>
+                          <item>
+                            <widget class="QPushButton" name="btnSetFrameIndex">
+                              <property name="text">
+                                <string>Set</string>
+                              </property>
+                              <property name="maximumWidth">
+                                <number>60</number>
+                              </property>
+                            </widget>
+                          </item>
+                        </layout>
+                      </widget>
+                    </item>
+                    <item>
+                      <layout class="QGridLayout" name="featGrid1">
+                        <item row="0" column="0">
+                          <widget class="QLabel" name="hdr_feat_name_1">
+                            <property name="text">
+                              <string>field</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="0" column="1">
+                          <widget class="QLabel" name="hdr_feat_ch1">
+                            <property name="text">
+                              <string>CH1</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="0" column="2">
+                          <widget class="QLabel" name="hdr_feat_ch2">
+                            <property name="text">
+                              <string>CH2</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="0" column="3">
+                          <widget class="QLabel" name="hdr_feat_ch3">
+                            <property name="text">
+                              <string>CH3</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="0" column="4">
+                          <widget class="QLabel" name="hdr_feat_ch4">
+                            <property name="text">
+                              <string>CH4</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="0">
+                          <widget class="QLabel" name="lbl_name_trig_id_1">
+                            <property name="text">
+                              <string>trig_id</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_trig_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_trig_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_trig_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_trig_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_trig_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_trig_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_trig_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_trig_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="2" column="0">
+                          <widget class="QLabel" name="lbl_name_bunch_id_1">
+                            <property name="text">
+                              <string>bunch_id</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="2" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_bunch_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_bunch_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="2" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_bunch_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_bunch_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="2" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_bunch_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_bunch_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="2" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_bunch_id">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_bunch_id</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="3" column="0">
+                          <widget class="QLabel" name="lbl_name_min_1">
+                            <property name="text">
+                              <string>min</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="3" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_min">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_min</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="3" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_min">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_min</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="3" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_min">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_min</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="3" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_min">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_min</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="0">
+                          <widget class="QLabel" name="lbl_name_max_1">
+                            <property name="text">
+                              <string>max</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_max">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_max</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_max">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_max</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_max">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_max</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_max">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_max</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="0">
+                          <widget class="QLabel" name="lbl_name_sum_l_1">
+                            <property name="text">
+                              <string>sum_l</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_sum_l">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_sum_l</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_sum_l">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_sum_l</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_sum_l">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_sum_l</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_sum_l">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_sum_l</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="6" column="0">
+                          <widget class="QLabel" name="lbl_name_sum_h_1">
+                            <property name="text">
+                              <string>sum_h</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="6" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_sum_h">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_sum_h</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="6" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_sum_h">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_sum_h</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="6" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_sum_h">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_sum_h</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="6" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_sum_h">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_sum_h</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="7" column="0">
+                          <widget class="QLabel" name="lbl_name_vpp_1">
+                            <property name="text">
+                              <string>vpp</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="7" column="1">
+                          <widget class="PyDMLabel" name="lbl_ch1_vpp">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch1_vpp</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="7" column="2">
+                          <widget class="PyDMLabel" name="lbl_ch2_vpp">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch2_vpp</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="7" column="3">
+                          <widget class="PyDMLabel" name="lbl_ch3_vpp">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch3_vpp</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="7" column="4">
+                          <widget class="PyDMLabel" name="lbl_ch4_vpp">
+                            <property name="channel">
+                              <cstring>ca://${P}${I}Process:ch4_vpp</cstring>
+                            </property>
+                          </widget>
+                        </item>
+                      </layout>
+                    </item>
+                  </layout>
+                </widget>
+              </item>
+              <item>
+                <widget class="QWidget" name="wavePanel1">
+                  <layout class="QGridLayout" name="waveGrid1">
+                    <item row="0" column="0">
+                      <widget class="PyDMWaveformPlot" name="waveView_ch1">
+                        <property name="title">
+                          <string>Waveform CH1</string>
+                        </property>
+                        <property name="minimumSize">
+                          <size>
+                            <width>0</width>
+                            <height>190</height>
+                          </size>
+                        </property>
+                        <property name="curves">
+                          <stringlist>
+                            <string>{&quot;y_channel&quot;: &quot;ca://${P}${I}Process:wave_ch1&quot;, &quot;x_channel&quot;: null, &quot;name&quot;: &quot;CH1&quot;, &quot;plot_style&quot;: &quot;Line&quot;}</string>
+                          </stringlist>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="1">
+                      <widget class="PyDMWaveformPlot" name="waveView_ch2">
+                        <property name="title">
+                          <string>Waveform CH2</string>
+                        </property>
+                        <property name="minimumSize">
+                          <size>
+                            <width>0</width>
+                            <height>190</height>
+                          </size>
+                        </property>
+                        <property name="curves">
+                          <stringlist>
+                            <string>{&quot;y_channel&quot;: &quot;ca://${P}${I}Process:wave_ch2&quot;, &quot;x_channel&quot;: null, &quot;name&quot;: &quot;CH2&quot;, &quot;plot_style&quot;: &quot;Line&quot;}</string>
+                          </stringlist>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="0">
+                      <widget class="PyDMWaveformPlot" name="waveView_ch3">
+                        <property name="title">
+                          <string>Waveform CH3</string>
+                        </property>
+                        <property name="minimumSize">
+                          <size>
+                            <width>0</width>
+                            <height>190</height>
+                          </size>
+                        </property>
+                        <property name="curves">
+                          <stringlist>
+                            <string>{&quot;y_channel&quot;: &quot;ca://${P}${I}Process:wave_ch3&quot;, &quot;x_channel&quot;: null, &quot;name&quot;: &quot;CH3&quot;, &quot;plot_style&quot;: &quot;Line&quot;}</string>
+                          </stringlist>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="1">
+                      <widget class="PyDMWaveformPlot" name="waveView_ch4">
+                        <property name="title">
+                          <string>Waveform CH4</string>
+                        </property>
+                        <property name="minimumSize">
+                          <size>
+                            <width>0</width>
+                            <height>190</height>
+                          </size>
+                        </property>
+                        <property name="curves">
+                          <stringlist>
+                            <string>{&quot;y_channel&quot;: &quot;ca://${P}${I}Process:wave_ch4&quot;, &quot;x_channel&quot;: null, &quot;name&quot;: &quot;CH4&quot;, &quot;plot_style&quot;: &quot;Line&quot;}</string>
+                          </stringlist>
+                        </property>
+                      </widget>
+                    </item>
+                  </layout>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <customwidgets>
+    <customwidget>
+      <class>PyDMLabel</class>
+      <extends>QLabel</extends>
+      <header>pydm.widgets.label</header>
+    </customwidget>
+    <customwidget>
+      <class>PyDMWaveformPlot</class>
+      <extends>QWidget</extends>
+      <header>pydm.widgets.waveformplot</header>
+    </customwidget>
+  </customwidgets>
+  <resources/>
+  <connections/>
+</ui>

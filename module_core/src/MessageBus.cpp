@@ -41,6 +41,15 @@ Module* MessageBus::findModule(const std::string& name) {
     return (it != modules_.end()) ? it->second : nullptr;
 }
 
+std::vector<Module*> MessageBus::modules() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::vector<Module*> out;
+    out.reserve(modules_.size());
+    for (auto& [name, mod] : modules_)
+        if (mod) out.push_back(mod);
+    return out;
+}
+
 void MessageBus::send(const Message& msg) {
     std::string target = msg.getTarget();
     

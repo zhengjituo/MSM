@@ -63,12 +63,6 @@ void ModuleStorage::handleState(const msm::Message& msg) {
         onEnableSave();
     } else if (msg.cmd == "DisableSave") {
         onDisableSave();
-    } else if (msg.cmd == "Status") {
-        msm::Message response("Response");
-        response.setTarget(msg.getSender());
-        response.setCorrelationId(msg.getCorrelationId());
-        onStatus(response);
-        msm::MessageBus::instance().send(response);
     }
 }
 
@@ -340,7 +334,8 @@ void ModuleStorage::onStatus(msm::Message& response) {
     response.data.set("disk_free_mb", std::to_string(freeDiskMB()));
     response.data.set("disk_emergency", diskEmergency_.load() ? "true" : "false");
     for (int i = 0; i < nCh_; i++) {
-        response.data.set("ch" + std::to_string(i + 1) + "_saved_frames",
+        // 语义: framesConsumed 包含 discard 路径的计数，故命名 consumed
+        response.data.set("ch" + std::to_string(i + 1) + "_consumed_frames",
                           std::to_string(files_[i].framesConsumed.load()));
         response.data.set("ch" + std::to_string(i + 1) + "_saved_bytes",
                           std::to_string(files_[i].bytesSaved.load()));
