@@ -24,6 +24,7 @@
 - [x] T6 推送 master + tag v1.1-multicard
 - [x] T7 真机双卡回归（473 批零丢失、dist/相位全中）
 - [x] T8 修 pydm 启动（venv 路径失效 + PyQt5 uic channel 属性兼容）
+- [x] T9 修 run_epics.sh 被用户环境 EPICS_BASE 劫持（桥加载失败静默退出）
 
 ## 冲突与裁决
 | 文件 | 双方改动 | 裁决 |
@@ -76,6 +77,17 @@
      @Property(str) 真 Q_PROPERTY，setProperty 触发 Python setter 验证通过。
      curves 不加（PyDMWaveformPlot.setCurves 真实存在，官方为 .ui 设计）
   offscreen 冒烟：msm_app.py 主窗口（控制条 + 内嵌 Display）加载成功
+- 2026-11-16 用户报"run_pydm.sh 后 run_epics.sh 退出了"：实为**桥从未起来**
+  （脚本 `wait $EPICS_PID` 等桥，桥 loader 报错秒退，脚本跟着退）。
+  根因：用户 .bashrc 导出 `EPICS_BASE=~/env/base-7.0.5` + LD_LIBRARY_PATH 注入，
+  脚本 `EPICS_BASE="${EPICS_BASE:-...}"` 优先用了用户环境 → 桥需要 vendored
+  树的 libCom.so.3.23.1 / libca.so.4.14.4，base-7.0.5 只有 3.19.0 / 4.13.8
+  → `error while loading shared libraries`。修 run_epics.sh：
+  1. 固定 vendored 树（`MSM_EPICS_BASE` 才允许外部覆盖）
+  2. 起桥前 ldd 预检，缺库明确报错
+  3. 桥异常退出时打印退出码 + 指向 /tmp/msm_epics.log
+  验证（在带坏 EPICS_BASE 的环境里跑）：桥 62/62 PV 连接，caget 读出
+  CTRL:backend_alive/daq_running=Off、Process/DAQ:ch1_frames=0，链路全通
 
 ## 遗留
 - EPICS 栈桌面联调：本 shell 无 DISPLAY，PyDM 只做了 offscreen 加载验证；

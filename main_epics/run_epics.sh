@@ -18,9 +18,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 CFG="$ROOT/config/pre.cfg"
 
-EPICS_BASE="${EPICS_BASE:-$ROOT/module_core/extern/epics}"
+# 固定用 vendored EPICS 树（module_core/extern/epics，7.0.7 系）：
+# 桥链接的是它的 libca.so.4.14.4 / libCom.so.3.23.1；用户 shell 里导出的
+# EPICS_BASE（如 ~/env/base-7.0.5，libCom 是 3.19.0）版本不匹配会导致
+# 桥加载失败、脚本静默退出。需要外部 base 请显式设 MSM_EPICS_BASE。
+EPICS_BASE="${MSM_EPICS_BASE:-$ROOT/module_core/extern/epics}"
 export EPICS_BASE
-export LD_LIBRARY_PATH="$EPICS_BASE/lib/linux-x86_64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$EPICS_BASE/lib/linux-x86_64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # IOC 监听地址：默认只服务本机回环。要让远端 PyDM 连，设 MSM_CAS_INTF=0.0.0.0
 # （同时客户端需设 MSM_IOC_ADDR=<本机IP>）。
 export EPICS_CAS_INTF_ADDR_LIST="${MSM_CAS_INTF:-127.0.0.1}"
@@ -72,6 +76,15 @@ else
 fi
 
 # ── 2. IPC → CA 桥 ──
+# 动态库完整性预检：EPICS 树不全/路径错时明确报错，而不是 loader 一句话
+# 后桥立刻退出、脚本 wait 完跟着退（表现为"run_epics.sh 自己退了"）
+missing="$(ldd "$HERE/build/msm_epics" 2>/dev/null | grep 'not found' || true)"
+if [ -n "$missing" ]; then
+    echo "[run_epics] ERROR: msm_epics 缺动态库（EPICS 树不完整或路径不对）:" >&2
+    echo "$missing" >&2
+    exit 1
+fi
+
 "$HERE/build/msm_epics" \
     --map "$ROOT/config/pv_map.json" \
     --prefix-cfg "$CFG" \
@@ -95,4 +108,8 @@ echo
 echo "[run_epics] ready. verify:"
 echo "  $EPICS_BASE/bin/linux-x86_64/caget ${P}${I}Process:ch1_frames"
 
-wait $EPICS_PID
+wait $EPICS_PID || rc=$?
+rc=${rc:-0}
+if [ "$rc" != "0" ]; then
+    echo "[run_epics] 桥 msm_epics 异常退出 (code $rc) — 看 /tmp/msm_epics.log" >&2
+fi
