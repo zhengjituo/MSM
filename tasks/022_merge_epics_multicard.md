@@ -22,6 +22,8 @@
 - [x] T4 全量构建（含新目标 msm_epics / msm_cli_config）
 - [x] T5 simsrc 冒烟（Status 自动导出 + 采集 + 干净退出）
 - [x] T6 推送 master + tag v1.1-multicard
+- [x] T7 真机双卡回归（473 批零丢失、dist/相位全中）
+- [x] T8 修 pydm 启动（venv 路径失效 + PyQt5 uic channel 属性兼容）
 
 ## 冲突与裁决
 | 文件 | 双方改动 | 裁决 |
@@ -59,7 +61,23 @@
   未推送（本 task 起因）
 - 2026-11-16 三方合并 5b2604f，4 冲突按上表裁决；sim 冒烟通过；
   推送 master + tag
+- 2026-11-16 **真机双卡回归（合并后）**：8ch×473 批，批间差恒 100000
+  （零丢失）、dist=0 473/473、相位 0µs（ch2–8 相对 ch1）、8 通道帧数
+  完全一致（4,730,536）；readpass gap 仅启动 pass 2–4 共 4 次（115–215ms，
+  32MB 缓冲吸收场景，未丢帧），稳态无 gap，干净退出
+- 2026-11-16 用户报"找不到 pydm"：run_pydm.sh 默认 venv 在
+  /tmp/opencode/pydm-venv（/tmp 清理后消失）。系统实际已装 pydm 1.13.0 +
+  epics 3.5.9 + PyQt5 5.15.3（~/.local）。修两处：
+  1. run_pydm.sh：PYDM 默认改为 PATH 查找（$PYDM > pydm > 旧 venv 路径），
+     PYBIN 缺失时回退 python3
+  2. gen_pydm.py / msm_daq.ui：channel 属性加 stdset="0"——PyQt5 uic 对
+     非标属性生成 setChannel()（PyDMLabel 无此方法，offscreen 实测
+     AttributeError）；stdset="0" 走 setProperty，pydm 的 channel 是
+     @Property(str) 真 Q_PROPERTY，setProperty 触发 Python setter 验证通过。
+     curves 不加（PyDMWaveformPlot.setCurves 真实存在，官方为 .ui 设计）
+  offscreen 冒烟：msm_app.py 主窗口（控制条 + 内嵌 Display）加载成功
 
 ## 遗留
-- 真机双卡回归（合并后未跑硬件；sim 已过，代码层面双方改动区域无重叠）
-- EPICS 栈实机联调（softIOC + CA 桥 + PyDM）由用户在 EPICS 环境验证
+- EPICS 栈桌面联调：本 shell 无 DISPLAY，PyDM 只做了 offscreen 加载验证；
+  完整链路（run_epics.sh 起 softIOC+CA 桥 → 桌面 run_pydm.sh 看界面）
+  由用户在 RDP 桌面跑

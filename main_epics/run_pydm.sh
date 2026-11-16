@@ -21,13 +21,15 @@ ROOT="$(dirname "$HERE")"
 CFG="$ROOT/config/pre.cfg"
 UI="$HERE/msm_daq.ui"
 MAP="$ROOT/config/pv_map.json"
-PYDM="${PYDM:-/tmp/opencode/pydm-venv/bin/pydm}"
+# pydm 位置：优先 $PYDM，其次 PATH（~/.local/bin/pydm），最后旧 venv 路径
+# （/tmp 的 venv 会被系统清理，故不再作为首选）
+PYDM="${PYDM:-$(command -v pydm 2>/dev/null || echo /tmp/opencode/pydm-venv/bin/pydm)}"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/msm/xcb"
 LIBS="$CACHE/usr/lib/x86_64-linux-gnu"
 
 die() { echo "[pydm] ERROR: $*" >&2; exit 1; }
 
-[ -x "$PYDM" ] || die "找不到 pydm: $PYDM （用 PYDM=/path/to/pydm 指定）"
+[ -x "$PYDM" ] || die "找不到 pydm: $PYDM （用 PYDM=/path/to/pydm 指定；或 pip install pydm）"
 
 # ── 可选：重新生成 .ui ──
 if [ "${1:-}" = "--regen" ]; then
@@ -104,6 +106,7 @@ PY
 echo "[pydm] macros: $MACROS"
 
 PYBIN="${PYDM%/*}/python"
+[ -x "$PYBIN" ] || PYBIN="$(command -v python3)"   # 系统 pydm（console script）无同目录 python
 if [ -f "$HERE/msm_app.py" ] && [ -x "$PYBIN" ]; then
     # 带控制条的主程序：自己读 pre.cfg，动态注入宏
     exec "$PYBIN" "$HERE/msm_app.py" "$@"

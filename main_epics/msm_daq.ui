@@ -26,7 +26,7 @@
             </item>
             <item>
               <widget class="PyDMLabel" name="lblBatch">
-                <property name="channel">
+                <property name="channel" stdset="0">
                   <cstring>ca://${P}${I}Process:batch_no</cstring>
                 </property>
               </widget>
@@ -40,7 +40,7 @@
             </item>
             <item>
               <widget class="PyDMLabel" name="lblFrame">
-                <property name="channel">
+                <property name="channel" stdset="0">
                   <cstring>ca://${P}${I}Process:frame_index</cstring>
                 </property>
               </widget>
@@ -112,28 +112,28 @@
                     </item>
                     <item row="1" column="1">
                       <widget class="PyDMLabel" name="lbl_daq_ch1">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch1_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="1" column="2">
                       <widget class="PyDMLabel" name="lbl_proc_ch1">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch1_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="1" column="3">
                       <widget class="PyDMLabel" name="lbl_batches_ch1">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch1_batches</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="1" column="4">
                       <widget class="PyDMLabel" name="lbl_stor_ch1">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch1_consumed_frames</cstring>
                         </property>
                       </widget>
@@ -147,28 +147,28 @@
                     </item>
                     <item row="2" column="1">
                       <widget class="PyDMLabel" name="lbl_daq_ch2">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch2_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="2" column="2">
                       <widget class="PyDMLabel" name="lbl_proc_ch2">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch2_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="2" column="3">
                       <widget class="PyDMLabel" name="lbl_batches_ch2">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch2_batches</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="2" column="4">
                       <widget class="PyDMLabel" name="lbl_stor_ch2">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch2_consumed_frames</cstring>
                         </property>
                       </widget>
@@ -182,28 +182,28 @@
                     </item>
                     <item row="3" column="1">
                       <widget class="PyDMLabel" name="lbl_daq_ch3">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch3_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="3" column="2">
                       <widget class="PyDMLabel" name="lbl_proc_ch3">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch3_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="3" column="3">
                       <widget class="PyDMLabel" name="lbl_batches_ch3">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch3_batches</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="3" column="4">
                       <widget class="PyDMLabel" name="lbl_stor_ch3">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch3_consumed_frames</cstring>
                         </property>
                       </widget>
@@ -217,28 +217,28 @@
                     </item>
                     <item row="4" column="1">
                       <widget class="PyDMLabel" name="lbl_daq_ch4">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch4_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="4" column="2">
                       <widget class="PyDMLabel" name="lbl_proc_ch4">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch4_frames</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="4" column="3">
                       <widget class="PyDMLabel" name="lbl_batches_ch4">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Process:ch4_batches</cstring>
                         </property>
                       </widget>
                     </item>
                     <item row="4" column="4">
                       <widget class="PyDMLabel" name="lbl_stor_ch4">
-                        <property name="channel">
+                        <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch4_consumed_frames</cstring>
                         </property>
                       </widget>
@@ -338,28 +338,28 @@
                         </item>
                         <item row="1" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_trig_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_trig_id</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="1" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_trig_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_trig_id</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="1" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_trig_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_trig_id</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="1" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_trig_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_trig_id</cstring>
                             </property>
                           </widget>
@@ -373,28 +373,28 @@
                         </item>
                         <item row="2" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_bunch_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_bunch_id</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="2" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_bunch_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_bunch_id</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="2" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_bunch_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_bunch_id</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="2" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_bunch_id">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_bunch_id</cstring>
                             </property>
                           </widget>
@@ -408,28 +408,28 @@
                         </item>
                         <item row="3" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_min">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_min</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="3" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_min">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_min</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="3" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_min">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_min</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="3" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_min">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_min</cstring>
                             </property>
                           </widget>
@@ -443,28 +443,28 @@
                         </item>
                         <item row="4" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_max">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_max</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="4" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_max">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_max</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="4" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_max">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_max</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="4" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_max">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_max</cstring>
                             </property>
                           </widget>
@@ -478,28 +478,28 @@
                         </item>
                         <item row="5" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_sum_l">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_sum_l</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="5" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_sum_l">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_sum_l</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="5" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_sum_l">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_sum_l</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="5" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_sum_l">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_sum_l</cstring>
                             </property>
                           </widget>
@@ -513,28 +513,28 @@
                         </item>
                         <item row="6" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_sum_h">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_sum_h</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="6" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_sum_h">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_sum_h</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="6" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_sum_h">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_sum_h</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="6" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_sum_h">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_sum_h</cstring>
                             </property>
                           </widget>
@@ -548,28 +548,28 @@
                         </item>
                         <item row="7" column="1">
                           <widget class="PyDMLabel" name="lbl_ch1_vpp">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch1_vpp</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="7" column="2">
                           <widget class="PyDMLabel" name="lbl_ch2_vpp">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch2_vpp</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="7" column="3">
                           <widget class="PyDMLabel" name="lbl_ch3_vpp">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch3_vpp</cstring>
                             </property>
                           </widget>
                         </item>
                         <item row="7" column="4">
                           <widget class="PyDMLabel" name="lbl_ch4_vpp">
-                            <property name="channel">
+                            <property name="channel" stdset="0">
                               <cstring>ca://${P}${I}Process:ch4_vpp</cstring>
                             </property>
                           </widget>

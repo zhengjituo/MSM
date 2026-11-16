@@ -37,7 +37,16 @@ FEATURES = ["trig_id", "bunch_id", "min", "max", "sum_l", "sum_h", "vpp"]
 
 # ───────────────────────── XML 小工具 ─────────────────────────
 def prop(widget, name, tag, value):
-    p = ET.SubElement(widget, "property", {"name": name})
+    # PyQt5 uic 对自定义控件的非标属性生成 set<Name>() 调用（PyDMLabel 无
+    # setChannel → AttributeError）；stdset="0" 走 setProperty，pydm 的
+    # channel 是 @Property(str) 真 Q_PROPERTY，setProperty 会触发 Python setter。
+    # （PySide2 uic 对未知属性本就生成 setProperty，两种绑定下都成立。）
+    # 例外：PyDMWaveformPlot.curves 有真实的 setCurves（官方为 .ui 加载设计），
+    # 必须走默认路径，不能加 stdset="0"。
+    attrs = {"name": name}
+    if name == "channel":
+        attrs["stdset"] = "0"
+    p = ET.SubElement(widget, "property", attrs)
     ET.SubElement(p, tag).text = str(value)
     return p
 
