@@ -77,6 +77,39 @@
   Index/Set 存在、np.float 0 条、Connection 错误 0 条、干净退出
 - 待用户在 RDP 桌面确认双卡真机显示
 
+## 补充：Config 对话框成功/失败显式提示（用户要求）
+
+- 原状：底部灰字状态行（"已加载 N 张卡"/"已保存（scope=X）"）+ 保存失败
+  弹窗，不醒目
+- 现在：`ConfigDialog._set_status(text, kind)` 三色——绿✓=成功 /
+  红✗=失败 / 灰=中性。Reload 成功→绿"Reload 成功：重新读取 N 张卡 /
+  路径"；保存成功→绿"保存成功（scope, card, ch）→ 文件，已回读确认"
+  （先 reload 回显落盘值再覆盖状态）；失败→红 + 弹窗带文件路径
+- 逻辑澄清（给用户）：Reload=重新读 app_pending_config.json
+  （meta+get，未保存的表格修改会丢）；Save=msm_cli_config save
+  --scope channel|card|chassis 写回 pending 文件，**不影响运行中
+  backend**（下次起 backend 生效）
+- offscreen 冒烟：打开即绿"✓ Reload 成功：重新读取 3 张卡"
+
+## 多卡 100ms 自动对齐核查（用户疑第二张卡没找对）
+
+- 机制：frameIndex_ 是**全局唯一**；自动对齐只扫 ch1（第一张卡）批内
+  帧，选 bunch_id 最靠近 %100000==0 的帧，该索引套用到全部 8 通道
+- 真机 30s 实测（122 batch）：8 通道每批 first_bunch_id 完全一致
+  （两卡 bunch 级同步），122/122 dist=0，976 个选中帧 bunch_id 全部
+  尾 00000 → **真机双卡当前对齐正确**
+- SIM 特性（若用户在 SIM 下观察）：sim 用单一全局 bunch 序列
+  （1, 11, 21…，bunchInc=10）**永远落不到 00000**，最近 dist=1
+  （…00001）；且 sim 帧无真实物理量，x/y/i 全 0 —— SIM 下
+  "尾巴不是 00000 + 一堆 0" 是预期行为，非多卡 bug
+- 设计前提：全局 frame_index 要求两卡同相。若未来两卡失相（掉帧/
+  重启不同步导致 Δ≠0），单一索引只能对齐一张卡，届时需改"每卡各自
+  对齐本卡 ch1"（per-card frame index）；现在不做
+- x/y/i 仅每卡 ch1 有值（CH2-4/CH6-8 恒 0，照 Qt 参考的设计，
+  非 bug）
+
 ## 遗留
 - 真机 2 卡的 PyDM 目检（tab 切换、CH5-8 波形/特征表、Set -1/500）
+- 用户若再看到"第二张卡没找对"：要模式（HW/SIM）+ 具体 bunch_id
+  值 + 当时是否有 stop/start 或掉帧（对比 ch1-4 与 ch5-8 帧数差）
 - 若以后换 3/4 卡：pv_map 加到 ch12/16 即可，gen 全链路自动

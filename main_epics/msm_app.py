@@ -202,16 +202,24 @@ class ConfigDialog(QDialog):
 
         self.reload()
 
+    # ── 状态行（绿=成功 / 红=失败 / 灰=中性）──
+    def _set_status(self, text, kind="info"):
+        color = {"ok": "#1e8e3e", "err": "#d93025", "info": "#606070"}[kind]
+        icon = {"ok": "✓ ", "err": "✗ ", "info": ""}[kind]
+        weight = "bold" if kind != "info" else "normal"
+        self.status.setStyleSheet("color:%s; font-weight:%s" % (color, weight))
+        self.status.setText(icon + text)
+
     # ── 数据加载 ──
     def reload(self):
         ok, meta = run_cfg_cli(["meta", "--config", CONFIG_FILE])
         if not ok:
-            self.status.setText("读取 meta 失败：%s" % meta.get("msg", meta))
+            self._set_status("读取 meta 失败：%s" % meta.get("msg", meta), "err")
             return
         self.meta = meta
         ok, cfg = run_cfg_cli(["get", "--config", CONFIG_FILE])
         if not ok:
-            self.status.setText("读取配置失败：%s" % cfg.get("msg", cfg))
+            self._set_status("读取配置失败：%s" % cfg.get("msg", cfg), "err")
             return
         self.cfg = cfg
 
@@ -227,7 +235,8 @@ class ConfigDialog(QDialog):
                                  int(idx))
         self._loading = False
         self.on_card_changed()
-        self.status.setText("已加载 %d 张卡 / %s" % (len(cards), CONFIG_FILE))
+        self._set_status("Reload 成功：重新读取 %d 张卡 / %s"
+                         % (len(cards), CONFIG_FILE), "ok")
 
     def _card(self):
         idx = self.cb_card.currentData()
@@ -301,7 +310,7 @@ class ConfigDialog(QDialog):
         card = self._card()
         ch = self._channel()
         if card is None or ch is None:
-            self.status.setText("没有可保存的卡/通道")
+            self._set_status("没有可保存的卡/通道", "err")
             return
         args = ["save", "--config", CONFIG_FILE, "--scope", scope,
                 "--card", str(int(card.get("CardIndex", 0))),
@@ -311,12 +320,24 @@ class ConfigDialog(QDialog):
         ok, res = run_cfg_cli(args)
         status = res.get("status", res)
         if ok and status == "ok":
+            # 保存成功后重新读取，让表格回显落盘后的真实值
             self.reload()
-            self.status.setText("已保存（scope=%s）" % scope)
+            # reload 内部会写绿色状态，这里再覆盖为"保存成功"，
+            # 让用户明确知道是保存动作的结果（而非单纯 reload）
+            self._set_status(
+                "保存成功（scope=%s, card=%s, ch=%s）→ %s，已回读确认"
+                % (scope, card.get("CardIndex"), ch.get("channel"),
+                   os.path.basename(CONFIG_FILE)), "ok")
         else:
-            self.status.setText("保存失败：%s%s" % (
-                status, (" / " + res.get("msg", "")) if res.get("msg") else ""))
-            QMessageBox.warning(self, "保存失败", str(status))
+            self._set_status(
+                "保存失败：%s%s" % (
+                    status, (" / " + res.get("msg", "")) if res.get("msg") else ""),
+                "err")
+            QMessageBox.warning(self, "保存失败",
+                                "写入 %s 未成功：\n%s%s" % (
+                                    CONFIG_FILE, status,
+                                    ("\n" + res.get("msg", ""))
+                                    if res.get("msg") else ""))
 
 
 # ───────────────────────── 控制条 ─────────────────────────
