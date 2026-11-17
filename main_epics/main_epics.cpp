@@ -436,10 +436,11 @@ static int ctrlDrain(IPCClient& ipc) {
         } else if (in.kind == CK_FRAME) {
             long idx = 0;
             try { idx = std::stol(val); } catch (...) { continue; }
-            if (idx < 0) continue;
-            // 注意：backend 并没有实现 "SetFrameIndex" 命令（webui 的 Set
-            // 按钮其实一直是空操作）。这里走 Module 内建的 SetVar，写
-            // VarTable 里的 frame_index，语义等价且真的生效。
+            // -1 = 自动对齐 100ms 边界（webui 的 Index 输入框 min 同为 -1），
+            // 必须放行；其余负数视为输入错误丢弃
+            if (idx < -1) continue;
+            // 走 Module 内建的 SetVar，直接写 VarTable 里的 frame_index
+            // （atomic），一次写入即生效，不依赖额外消息命令。
             cmd = "MSG SetVar >> var=frame_index,value=" + std::to_string(idx) + " -@ Process";
         } else {  // CK_MSG
             if (val.empty()) continue;
@@ -450,11 +451,12 @@ static int ctrlDrain(IPCClient& ipc) {
         std::cout << "[epics] ctrl " << pv << " -> " << cmd
                   << " : " << resp << std::endl;
 
-        // 触发型 bo 复位；msg 清空；frame_index 复位到 -1 —— 否则同样的命令
-        // 第二次写不进 CA（值未变，服务端不产生 monitor 事件）
+        // 触发型 bo 复位；msg 清空。frame_index 不复位：它表达的是"当前请求
+        // 的帧号状态"而非触发（相同值重发 = 无操作，语义正确）。若复位到 -1，
+        // 桥自己的复位事件会再次分发 SetVar -1，把刚设好的帧号打回自动模式
+        // （实测 500 只活一个 batch）。
         if (in.kind == CK_CMD) caPut(e, "0");
         else if (in.kind == CK_MSG) caPut(e, "");
-        else if (in.kind == CK_FRAME) caPut(e, "-1");
 
         auto rit = g_ctrlOut.find("resp");
         if (rit != g_ctrlOut.end() && rit->second)

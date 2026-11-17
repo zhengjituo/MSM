@@ -77,7 +77,12 @@ def gen_ai(pv, egu, prec, lo=0, hi=0):
         lines.append(f'    field(LOLO, "{lo}")')
         lines.append('    field(HHSV, "MAJOR")')
         lines.append('    field(HSV,  "MINOR")')
+    # LOPR/HOPR（raw 钳制上下限，ai 记录没有 DRVL/DRVH）不设时默认为 0：
+    # softChannel 写入的负值（frame_index=-1 自动模式、负电压 min/max/vpp、
+    # 负束流位置 x/y）会被钳到 0，界面全显示 0。置 ±1e9 相当于不钳制。
     lines += [
+        '    field(LOPR, "-1e9")',
+        '    field(HOPR, "1e9")',
         '    field(ADEL, "0")',
         '    field(SCAN, "Passive")',
         '}',
