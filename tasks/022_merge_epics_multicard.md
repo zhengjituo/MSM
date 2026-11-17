@@ -89,7 +89,28 @@
   验证（在带坏 EPICS_BASE 的环境里跑）：桥 62/62 PV 连接，caget 读出
   CTRL:backend_alive/daq_running=Off、Process/DAQ:ch1_frames=0，链路全通
 
+- 2026-11-17 用户报"PyDM 的 Index 不能填 -1（自动对齐 100ms 边界）"。
+  排查出**三个叠加 bug**（`21cd57e`）：
+  1. 桥 main_epics.cpp 分发 CK_FRAME 时 `if (idx < 0) continue` 静默丢弃
+     负数 → -1 永远到不了后端。改为仅拒绝 <-1（对齐 webui 输入框 min=-1）
+  2. 分发后"触发语义"复位 `caPut(set_frame_index, "-1")` 会**自触发**：
+     桥自己的复位事件再次分发 SetVar -1，把刚设好的帧号打回自动模式
+     （仿真实测 caput 500 只活 1 个 batch=100ms）。frame_index 是状态
+     而非触发，去掉复位（相同值重发 = 无操作，语义正确）
+  3. gen_db.py 生成的 ai 记录没有 raw 钳制字段 → EPICS 默认把写入的
+     负值钳到 0（frame_index=-1 显示成 0，负电压 min/max/vpp、负束流
+     位置 x/y 同样被吞）。补 LOPR/HOPR=±1e9（注意：ai 记录没有
+     DRVL/DRVH，那是 aao/ao 的字段，先错用一次被 iocInit 报
+     "does not have a field" 纠正）；msm_pvs.db 已重新生成
+  仿真 E2E 验证（simsrc + run_epics + caput/caget）：初始 PV=-1；
+  caput 500 → PV=500 且后端日志**持续** frame_idx=500；caput -1 →
+  PV=-1 且后端回自动模式。真机自动对齐 idx 行为不变（dist=0）
+  注意：期间用户同时在 PyDM 做操作，其 Quit 会正常关闭桥+后端并让
+  run_epics.sh 随之退出（设计如此：Quit=全停；想保留 EPICS 侧用 Stop）
+
 ## 遗留
 - EPICS 栈桌面联调：本 shell 无 DISPLAY，PyDM 只做了 offscreen 加载验证；
   完整链路（run_epics.sh 起 softIOC+CA 桥 → 桌面 run_pydm.sh 看界面）
-  由用户在 RDP 桌面跑
+  由用户在 RDP 桌面跑。2026-11-17 frame index 修复已推送，环境已清空，
+  待用户按 3 终端流程重测（Index 填 -1 应生效且顶部 frame index 标签
+  显示 -1 而非 0）
