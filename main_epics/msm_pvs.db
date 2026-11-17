@@ -95,6 +95,46 @@ record(ai, "$(P)$(I)DAQ:ch4_frames") {
     field(SCAN, "Passive")
 }
 
+record(ai, "$(P)$(I)DAQ:ch5_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch6_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch7_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch8_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
 record(ai, "$(P)$(I)Process:ch1_frames") {
     field(DTYP, "Soft Channel")
     field(PREC, "0")
@@ -427,6 +467,338 @@ record(ai, "$(P)$(I)Process:ch4_vpp") {
     field(SCAN, "Passive")
 }
 
+record(ai, "$(P)$(I)Process:ch5_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_batches") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_trig_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_bunch_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_min") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_max") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_sum_l") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_sum_h") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch5_vpp") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_batches") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_trig_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_bunch_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_min") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_max") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_sum_l") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_sum_h") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch6_vpp") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_batches") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_trig_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_bunch_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_min") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_max") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_sum_l") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_sum_h") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch7_vpp") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_batches") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_trig_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_bunch_id") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_min") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_max") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_sum_l") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_sum_h") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Process:ch8_vpp") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "4")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
 record(ai, "$(P)$(I)Storage:ch1_consumed_frames") {
     field(DTYP, "Soft Channel")
     field(PREC, "0")
@@ -467,6 +839,46 @@ record(ai, "$(P)$(I)Storage:ch4_consumed_frames") {
     field(SCAN, "Passive")
 }
 
+record(ai, "$(P)$(I)Storage:ch5_consumed_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Storage:ch6_consumed_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Storage:ch7_consumed_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)Storage:ch8_consumed_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
 # ---- group wave (5 Hz) ----
 record(waveform, "$(P)$(I)Process:wave_ch1") {
     field(DTYP, "Soft Channel")
@@ -490,6 +902,34 @@ record(waveform, "$(P)$(I)Process:wave_ch3") {
 }
 
 record(waveform, "$(P)$(I)Process:wave_ch4") {
+    field(DTYP, "Soft Channel")
+    field(NELM, "4096")
+    field(FTVL, "ULONG")
+    field(SCAN, "Passive")
+}
+
+record(waveform, "$(P)$(I)Process:wave_ch5") {
+    field(DTYP, "Soft Channel")
+    field(NELM, "4096")
+    field(FTVL, "ULONG")
+    field(SCAN, "Passive")
+}
+
+record(waveform, "$(P)$(I)Process:wave_ch6") {
+    field(DTYP, "Soft Channel")
+    field(NELM, "4096")
+    field(FTVL, "ULONG")
+    field(SCAN, "Passive")
+}
+
+record(waveform, "$(P)$(I)Process:wave_ch7") {
+    field(DTYP, "Soft Channel")
+    field(NELM, "4096")
+    field(FTVL, "ULONG")
+    field(SCAN, "Passive")
+}
+
+record(waveform, "$(P)$(I)Process:wave_ch8") {
     field(DTYP, "Soft Channel")
     field(NELM, "4096")
     field(FTVL, "ULONG")
@@ -557,4 +997,4 @@ record(stringin, "$(P)$(I)CTRL:resp") {
     field(SCAN, "Passive")
 }
 
-# total records: 62
+# total records: 110

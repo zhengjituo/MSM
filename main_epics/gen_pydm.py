@@ -17,14 +17,15 @@
     4. geometry 必须用 <rect>，不能拿 <size> 顶替
 
 用法:
-    python3 gen_pydm.py                    # 4 通道 / 每卡 4 通道 → 1 个 tab
-    python3 gen_pydm.py --nchannels 8      # 8 通道 → 2 个 tab
+    python3 gen_pydm.py                    # 通道数从 pv_map.json 自动推导
+    python3 gen_pydm.py --nchannels 8      # 手动指定总通道数（覆盖推导）
     python3 gen_pydm.py --ch-per-card 2    # 每卡 2 通道
 """
 
 import argparse
 import json
 import os
+import re
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
@@ -123,8 +124,10 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
     fg = ET.SubElement(fr, "layout",
                        {"class": "QGridLayout", "name": f"frameGrid{card_no}"})
 
-    # 列顺序对齐 webui：Ch | DAQ | Process | Batches | Storage
-    for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Storage"]):
+    # 列顺序对齐 webui：Ch | DAQ | Process | Batches | Consumed
+    # （consumed = storage 阶段消耗的帧数，不管是否真的落盘都计数，
+    #   显示名不用模块名 Storage，避免误解为"已存盘帧数"）
+    for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Consumed"]):
         add_to_grid(fg, 0, 0 + c, "QLabel", f"hdr_frame_{card_no}_{c}",
                     text=("string", h))
     for r, ch in enumerate(channels, start=1):
@@ -141,32 +144,15 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
             else:
                 add_to_grid(fg, r, c, "QLabel", name, text=("string", "-"))
 
-    # ── 特征表（含 Index/Set 行，对齐 webui 的 batch #N idx=M + Set）──
+    # ── 特征表 ──
+    # Index/Set 不放在卡内：frame_index 是全局变量（batch 相位对齐对所有卡
+    # 同义），webui 也只有一个全局入口；放每卡里会出现多个同名控件且只连
+    # 上第一个。挪到顶部状态栏（build() 里），与 webui 的 batch #N idx=M 一致。
     ft_item = ET.SubElement(vbox, "item")
     ft = ET.SubElement(ft_item, "widget",
                        {"class": "QWidget", "name": f"featPanel{card_no}"})
     ftv = ET.SubElement(ft, "layout",
                         {"class": "QVBoxLayout", "name": f"featOuter{card_no}"})
-
-    idx_row = ET.SubElement(ftv, "item")
-    idx_w = ET.SubElement(idx_row, "widget",
-                          {"class": "QWidget", "name": f"idxRow{card_no}"})
-    idx_h = ET.SubElement(idx_w, "layout",
-                          {"class": "QHBoxLayout", "name": f"idxLayout{card_no}"})
-    # 右侧对齐：占位 spacer 在前
-    sp_item = ET.SubElement(idx_h, "item")
-    sp = ET.SubElement(sp_item, "spacer", {"name": f"idxPush{card_no}"})
-    prop(sp, "orientation", "enum", "Qt::Horizontal")
-    usp = ET.SubElement(sp, "property", {"name": "sizeHint"})
-    sz = ET.SubElement(usp, "size")
-    ET.SubElement(sz, "width").text = "40"
-    ET.SubElement(sz, "height").text = "20"
-    add_to_layout(idx_h, "QLabel", f"lblIdxName{card_no}", text=("string", "Index:"))
-    ed = add_to_layout(idx_h, "QLineEdit", "editFrameIndex")
-    prop(ed, "maximumWidth", "number", 90)
-    btn = add_to_layout(idx_h, "QPushButton", "btnSetFrameIndex",
-                        text=("string", "Set"))
-    prop(btn, "maximumWidth", "number", 60)
 
     grid_item = ET.SubElement(ftv, "item")
     tg = ET.SubElement(grid_item, "layout",
@@ -211,6 +197,23 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
 
 
 # ───────────────────────── 构建 ─────────────────────────
+def derive_nchannels(cfg):
+    """从 pv_map 推导总通道数（Process:chN_frames 与 wave channels 的最大值）。
+
+    多卡时（如 2×4=8）不必再手改 --nchannels：pv_map 加到 ch8，
+    这里自动推出 2 个 tab。
+    """
+    nch = 0
+    for g in cfg.get("groups", {}).values():
+        for it in g.get("vars", []):
+            m = re.match(r"Process:ch(\d+)_frames$", it.get("from", ""))
+            if m:
+                nch = max(nch, int(m.group(1)))
+        for ch in g.get("channels", []):
+            nch = max(nch, int(ch))
+    return nch
+
+
 def build(cfg, nch, ch_per_card=4):
     varmap = {}
     for g in cfg.get("groups", {}).values():
@@ -242,6 +245,15 @@ def build(cfg, nch, ch_per_card=4):
     if pv_or_none(varmap, "Process:frame_index"):
         add_to_layout(hbl, "PyDMLabel", "lblFrame",
                       channel=pv_or_none(varmap, "Process:frame_index"))
+    # Index + Set（全局，对齐 webui 的 "batch #N idx=M + Set"）：
+    # frame_index 对所有卡同义（batch 相位对齐），只放一个入口。
+    # -1 = 自动对齐 100ms 边界；≥0 = 固定选 batch 内第 N 帧
+    add_to_layout(hbl, "QLabel", "lblIdxName", text=("string", "  Index:"))
+    ed = add_to_layout(hbl, "QLineEdit", "editFrameIndex")
+    prop(ed, "maximumWidth", "number", 90)
+    btn = add_to_layout(hbl, "QPushButton", "btnSetFrameIndex",
+                        text=("string", "Set"))
+    prop(btn, "maximumWidth", "number", 60)
     add_to_layout(hbl, "QLabel", "spacer", text=("string", ""))
 
     # ── 多卡 tab ──
@@ -274,7 +286,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-m", "--map", default=DEFAULT_MAP)
     ap.add_argument("-o", "--out", default=os.path.join(HERE, "msm_daq.ui"))
-    ap.add_argument("--nchannels", type=int, default=4)
+    ap.add_argument("--nchannels", type=int, default=None,
+                    help="总通道数；缺省从 pv_map.json 自动推导")
     ap.add_argument("--ch-per-card", type=int, default=4,
                     help="每个 tab 容纳多少通道（默认 4，即一卡 4 通道）")
     args = ap.parse_args()
@@ -284,6 +297,11 @@ def main():
 
     if args.ch_per_card < 1:
         raise SystemExit("--ch-per-card 必须 >= 1")
+
+    nch = args.nchannels if args.nchannels is not None else derive_nchannels(cfg)
+    if nch < 1:
+        raise SystemExit("pv_map.json 推不出通道数，请用 --nchannels 指定")
+    args.nchannels = nch
 
     ui = build(cfg, args.nchannels, args.ch_per_card)
 

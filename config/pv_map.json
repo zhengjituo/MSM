@@ -106,6 +106,30 @@
                     "prec": 0
                 },
                 {
+                    "from": "DAQ:ch5_frames",
+                    "pv": "${P}${I}DAQ:ch5_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch6_frames",
+                    "pv": "${P}${I}DAQ:ch6_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch7_frames",
+                    "pv": "${P}${I}DAQ:ch7_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "DAQ:ch8_frames",
+                    "pv": "${P}${I}DAQ:ch8_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
                     "from": "Process:ch1_frames",
                     "pv": "${P}${I}Process:ch1_frames",
                     "egu": "count",
@@ -322,6 +346,222 @@
                     "prec": 4
                 },
                 {
+                    "from": "Process:ch5_frames",
+                    "pv": "${P}${I}Process:ch5_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch5_batches",
+                    "pv": "${P}${I}Process:ch5_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch5_trig_id",
+                    "pv": "${P}${I}Process:ch5_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch5_bunch_id",
+                    "pv": "${P}${I}Process:ch5_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch5_min",
+                    "pv": "${P}${I}Process:ch5_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch5_max",
+                    "pv": "${P}${I}Process:ch5_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch5_sum_l",
+                    "pv": "${P}${I}Process:ch5_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch5_sum_h",
+                    "pv": "${P}${I}Process:ch5_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch5_vpp",
+                    "pv": "${P}${I}Process:ch5_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch6_frames",
+                    "pv": "${P}${I}Process:ch6_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch6_batches",
+                    "pv": "${P}${I}Process:ch6_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch6_trig_id",
+                    "pv": "${P}${I}Process:ch6_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch6_bunch_id",
+                    "pv": "${P}${I}Process:ch6_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch6_min",
+                    "pv": "${P}${I}Process:ch6_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch6_max",
+                    "pv": "${P}${I}Process:ch6_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch6_sum_l",
+                    "pv": "${P}${I}Process:ch6_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch6_sum_h",
+                    "pv": "${P}${I}Process:ch6_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch6_vpp",
+                    "pv": "${P}${I}Process:ch6_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch7_frames",
+                    "pv": "${P}${I}Process:ch7_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch7_batches",
+                    "pv": "${P}${I}Process:ch7_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch7_trig_id",
+                    "pv": "${P}${I}Process:ch7_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch7_bunch_id",
+                    "pv": "${P}${I}Process:ch7_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch7_min",
+                    "pv": "${P}${I}Process:ch7_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch7_max",
+                    "pv": "${P}${I}Process:ch7_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch7_sum_l",
+                    "pv": "${P}${I}Process:ch7_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch7_sum_h",
+                    "pv": "${P}${I}Process:ch7_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch7_vpp",
+                    "pv": "${P}${I}Process:ch7_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch8_frames",
+                    "pv": "${P}${I}Process:ch8_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch8_batches",
+                    "pv": "${P}${I}Process:ch8_batches",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch8_trig_id",
+                    "pv": "${P}${I}Process:ch8_trig_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch8_bunch_id",
+                    "pv": "${P}${I}Process:ch8_bunch_id",
+                    "egu": "",
+                    "prec": 0
+                },
+                {
+                    "from": "Process:ch8_min",
+                    "pv": "${P}${I}Process:ch8_min",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch8_max",
+                    "pv": "${P}${I}Process:ch8_max",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch8_sum_l",
+                    "pv": "${P}${I}Process:ch8_sum_l",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch8_sum_h",
+                    "pv": "${P}${I}Process:ch8_sum_h",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
+                    "from": "Process:ch8_vpp",
+                    "pv": "${P}${I}Process:ch8_vpp",
+                    "egu": "",
+                    "prec": 4
+                },
+                {
                     "from": "Storage:ch1_consumed_frames",
                     "pv": "${P}${I}Storage:ch1_consumed_frames",
                     "egu": "count",
@@ -344,6 +584,30 @@
                     "pv": "${P}${I}Storage:ch4_consumed_frames",
                     "egu": "count",
                     "prec": 0
+                },
+                {
+                    "from": "Storage:ch5_consumed_frames",
+                    "pv": "${P}${I}Storage:ch5_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Storage:ch6_consumed_frames",
+                    "pv": "${P}${I}Storage:ch6_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Storage:ch7_consumed_frames",
+                    "pv": "${P}${I}Storage:ch7_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
+                },
+                {
+                    "from": "Storage:ch8_consumed_frames",
+                    "pv": "${P}${I}Storage:ch8_consumed_frames",
+                    "egu": "count",
+                    "prec": 0
                 }
             ]
         },
@@ -355,7 +619,11 @@
                 1,
                 2,
                 3,
-                4
+                4,
+                5,
+                6,
+                7,
+                8
             ],
             "vars": [],
             "pv_pattern": "${P}${I}Process:wave_ch{ch}"

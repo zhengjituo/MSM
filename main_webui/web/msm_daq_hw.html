@@ -86,7 +86,8 @@ tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-alig
 
 <h2>Frame Summary</h2>
 <table>
-  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th>Storage</th></tr></thead>
+  <!-- Consumed = storage 阶段消耗的帧数（不管是否落盘都计数），不叫 Storage 以免误解为已存盘 -->
+  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th>Consumed</th></tr></thead>
   <tbody id="chTable"></tbody>
 </table>
 

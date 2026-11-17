@@ -22,6 +22,14 @@ import subprocess
 import sys
 import time
 
+import numpy as _np
+if not hasattr(_np, "float"):
+    # pydm 1.13.0 的 waveformplot/scatterplot/timeplot 用 np.float —— 该别名
+    # 在 numpy>=1.24 被移除（本机 2.2.6），导致**每次波形重绘都抛
+    # AttributeError、曲线永远画不出来**。np.float 本来就是内建 float 的
+    # 别名，补回它语义完全一致（只影响本进程）。
+    _np.float = float
+
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
@@ -610,9 +618,42 @@ def build():
     return app, win
 
 
+def teardown(app, win):
+    """事件循环退出后显式断开全部 PyDM 通道（必须在进程退出前做）。
+
+    不这么做的话：解释器收尾阶段 PyQt5/sip 按模块序销毁 C++ 对象，
+    Connection（pydm 插件里持有的 QObject）的 C++ 先被删，而各 PyDM 控件
+    的 destroyed 信号回调稍后才跑 channel.disconnect() →
+    plugin.remove_connection() 去 deleteLater() 已死的 C++ 对象 →
+    每个 PV 一条 "RuntimeError: wrapped C/C++ object of type Connection
+    has been deleted"（实测 50+ 条刷屏）。
+    此刻对象都还活着：正常断开 + 清空插件连接表，退出时回调全部空操作。
+    """
+    try:
+        from pydm.utilities import close_widget_connections
+        close_widget_connections(win)
+    except Exception:                              # noqa: BLE001
+        pass
+    try:
+        import pydm.data_plugins as dp
+        pl = dp.plugin_modules.get("ca")
+        if pl is not None:
+            for conn in list(pl.connections.values()):
+                try:
+                    conn.close()
+                except Exception:                  # noqa: BLE001
+                    pass
+            pl.connections.clear()
+            pl.channels.clear()
+    except Exception:                              # noqa: BLE001
+        pass
+
+
 def main():
-    app, _win = build()
-    return app.exec_()
+    app, win = build()
+    rc = app.exec_()
+    teardown(app, win)
+    return rc
 
 
 if __name__ == "__main__":

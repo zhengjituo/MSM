@@ -53,7 +53,8 @@ kill_stale() {
     sleep 1
     for p in $pids; do
         [ -n "$p" ] || continue
-        kill -KILL "$p" 2>/dev/null
+        # || true：TERM 后进程自行退出时 KILL 会失败，set -e 下不能让它杀脚本
+        kill -KILL "$p" 2>/dev/null || true
     done
     rm -f "$pidf"
 }
