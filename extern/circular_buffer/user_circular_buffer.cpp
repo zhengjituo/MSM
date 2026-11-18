@@ -59,6 +59,36 @@ size_t UserCircularBuffer::writeFromDevice(const void* data, size_t size) {
     return size;
 }
 
+size_t UserCircularBuffer::peekAt(uint64_t off, void* dest, size_t size) const {
+    if (!dest || size == 0) return 0;
+    if (align_capacity_ == 0) return 0;
+
+    uint64_t cur_read  = read_total_.load(std::memory_order_relaxed);
+    uint64_t cur_write = write_total_.load(std::memory_order_acquire);
+    uint64_t avail = cur_write - cur_read;
+    if (off + size > avail) return 0;   // 数据未就位，调用方应先查 available
+
+    uint8_t* dst = static_cast<uint8_t*>(dest);
+    uint64_t pos = (cur_read + off) % align_capacity_;
+    size_t first = std::min(size, (size_t)(align_capacity_ - pos));
+    std::memcpy(dst, buffer_ + pos, first);
+    if (first < size)
+        std::memcpy(dst + first, buffer_, size - first);
+    return size;
+}
+
+bool UserCircularBuffer::skip(size_t n) {
+    if (n == 0) return true;
+    if (align_capacity_ == 0) return false;
+
+    // 单消费端（process）调用，与 readData 同风格：先校验再推进
+    uint64_t cur_read  = read_total_.load(std::memory_order_relaxed);
+    uint64_t cur_write = write_total_.load(std::memory_order_acquire);
+    if (n > cur_write - cur_read) return false;
+    read_total_.store(cur_read + n, std::memory_order_release);
+    return true;
+}
+
 size_t UserCircularBuffer::readData(void* dest, size_t size) {
     if (!dest || size == 0) return 0;
     if (align_capacity_ == 0) return 0;

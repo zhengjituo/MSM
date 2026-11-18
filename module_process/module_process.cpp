@@ -450,46 +450,63 @@ void ModuleProcess::doConsumeOnce() {
 
     // Check saveRing space before reading: need room for all channels
     //（保存关闭时不写 saveRing，无需检查空间）
+    const bool saving = saveEnabled_.load() && saveRing_ != nullptr;
     size_t totalNeeded = 0;
+    size_t flens[MAX_CH] = {0};
     for (int i = 0; i < nCh_; i++) {
-        size_t flen = rings_[i]->getExpectedPacketSize();
-        totalNeeded += batchSize_ * flen;
+        flens[i] = rings_[i]->getExpectedPacketSize();
+        totalNeeded += batchSize_ * flens[i];
     }
-    if (saveEnabled_.load() && saveRing_ && saveRing_->availableSpace() < totalNeeded) {
+    if (saving && saveRing_->availableSpace() < totalNeeded) {
         return;
     }
 
-    // 先读所有通道数据到 batchBuf_（ch1,ch2..chN 顺序排列）
     // 消费瓶颈计时：read=ring读+saveRing写 / scan=step检测+对齐扫描 / ext=取帧 / log=日志输出
+    // 保存开：整批读全通道到 batchBuf_（saveRing 需要全量数据，ch1..chN 顺序排列）。
+    // 保存关：选择读——只读 ch1 整批（对齐扫描用），其余通道 peekAt 选中帧/首帧，
+    //   游标用 skip 前移丢整批。省 ~97% 的 174MB/批白拷贝（实测 26ms/批，process CPU
+    //   大头；CPU 竞争会拖慢 2 个 DAQ 读线程，间接威胁原始数据流）。
+    //   纯消费端改动：写端 ring 满即丢、无锁，永不被消费端阻塞。
     auto pt0 = std::chrono::steady_clock::now();
     size_t totalBytes = 0;
-    size_t offsets[MAX_CH];
-    for (int i = 0; i < nCh_; i++) {
-        size_t flen = rings_[i]->getExpectedPacketSize();
-        size_t batchBytes = batchSize_ * flen;
-        offsets[i] = totalBytes;
-        totalBytes += batchBytes;
-        if (batchBuf_.size() < totalBytes)
-            batchBuf_.resize(totalBytes);
+    size_t offsets[MAX_CH] = {0};
+    if (saving) {
+        for (int i = 0; i < nCh_; i++) {
+            size_t batchBytes = batchSize_ * flens[i];
+            offsets[i] = totalBytes;
+            totalBytes += batchBytes;
+            if (batchBuf_.size() < totalBytes)
+                batchBuf_.resize(totalBytes);
 
-        size_t got = rings_[i]->readData(batchBuf_.data() + offsets[i], batchBytes);
-        if (got < batchBytes) {
-            std::cerr << "[" << name_ << "] ch" << (i + 1)
-                      << " read " << got << " < " << batchBytes << "\n";
-            totalBytes = 0;
-            break;
+            size_t got = rings_[i]->readData(batchBuf_.data() + offsets[i], batchBytes);
+            if (got < batchBytes) {
+                std::cerr << "[" << name_ << "] ch" << (i + 1)
+                          << " read " << got << " < " << batchBytes << "\n";
+                totalBytes = 0;
+                break;
+            }
         }
+        // 一次性写入 saveRing
+        if (totalBytes > 0)
+            saveRing_->writeFromDevice(batchBuf_.data(), totalBytes);
+    } else {
+        // 选择读：ch1 整批进 batchBuf_（偏移 0，供对齐扫描 + ch1 取帧/日志）
+        offsets[0] = 0;
+        size_t bb0 = batchSize_ * flens[0];
+        if (batchBuf_.size() < bb0)
+            batchBuf_.resize(bb0);
+        size_t got = rings_[0]->readData(batchBuf_.data(), bb0);
+        if (got < bb0) {
+            std::cerr << "[" << name_ << "] ch1 read " << got << " < " << bb0 << "\n";
+            return;
+        }
+        totalBytes = bb0;
     }
-
-    // 一次性写入 saveRing（保存关闭时跳过：省 92MB/批 的白拷贝）
-    if (saveEnabled_.load() && totalBytes > 0 && saveRing_)
-        saveRing_->writeFromDevice(batchBuf_.data(), totalBytes);
-
     if (totalBytes == 0) return;
     auto pt1 = std::chrono::steady_clock::now();
 
     // Detect bunchId step from ch0
-    size_t flen0 = rings_[0] ? rings_[0]->getExpectedPacketSize() : 0;
+    size_t flen0 = rings_[0] ? flens[0] : 0;
     if (flen0 > 0) {
         int detected = detectBunchIdStep(batchBuf_.data() + offsets[0], flen0, batchSize_);
         if (detected > 0) bunchIdStep_ = detected;
@@ -536,9 +553,23 @@ void ModuleProcess::doConsumeOnce() {
     auto pt2 = std::chrono::steady_clock::now();
 
     // Extract selected frame from each channel
+    // 保存关时 ch>1 不在 batchBuf_ 里：peekAt 选中帧后取帧（游标不动，稍后统一 skip）
+    std::vector<uint8_t> peekBuf;
     for (int i = 0; i < nCh_; i++) {
-        size_t flen = rings_[i]->getExpectedPacketSize();
-        const uint8_t* frame = batchBuf_.data() + offsets[i] + (size_t)selIdx * flen;
+        size_t flen = flens[i];
+        const uint8_t* frame;
+        if (saving || i == 0) {
+            frame = batchBuf_.data() + offsets[i] + (size_t)selIdx * flen;
+        } else {
+            if (peekBuf.size() < flen) peekBuf.resize(flen);
+            if (rings_[i]->peekAt((size_t)selIdx * flen, peekBuf.data(), flen) != flen) {
+                std::cerr << "[" << name_ << "] ch" << (i + 1)
+                          << " peekAt(selIdx) failed, fallback to frame 0\n";
+                if (rings_[i]->peekAt(0, peekBuf.data(), flen) != flen)
+                    continue;   // 理论不可达（available 已预检）；本通道跳过取帧
+            }
+            frame = peekBuf.data();
+        }
         extractFrame(frame, flen, i);
         batchData_[i].count = 1;
         batchData_[i].batchNo = curBatch;
@@ -557,10 +588,16 @@ void ModuleProcess::doConsumeOnce() {
         ts = std::string("[ts ") + tb + "." + std::to_string(tv.tv_usec / 1000) + "] ";
     }
     for (int i = 0; i < nCh_; i++) {
-        size_t flen = rings_[i]->getExpectedPacketSize();
+        size_t flen = flens[i];
         uint64_t fb = 0;
-        const uint8_t* ff = batchBuf_.data() + offsets[i];
-        if (ff[0] == 0xEB && ff[1] == 0x91 && flen >= TRAILER_SIZE) {
+        const uint8_t* ff;
+        if (saving || i == 0) {
+            ff = batchBuf_.data() + offsets[i];
+        } else {
+            if (peekBuf.size() < flen) peekBuf.resize(flen);
+            ff = (rings_[i]->peekAt(0, peekBuf.data(), flen) == flen) ? peekBuf.data() : nullptr;
+        }
+        if (ff && ff[0] == 0xEB && ff[1] == 0x91 && flen >= TRAILER_SIZE) {
             fb = readU48BE(ff + flen - TRAILER_SIZE + 2);
         }
         int chPhys = (i < (int)physChannels_.size()) ? physChannels_[i] : (i + 1);
@@ -601,9 +638,13 @@ void ModuleProcess::doConsumeOnce() {
     auto pt4 = std::chrono::steady_clock::now();
 
     for (int i = 0; i < nCh_; i++) {
-        size_t flen = rings_[i]->getExpectedPacketSize();
+        size_t flen = flens[i];
         uint64_t lastWrite = lastWritePos_[i].load();
         uint64_t needed = (uint64_t)batchSize_ * (uint64_t)flen;
+        // 保存关：ch>1 的游标在此前移丢整批（ch1 已由 readData 前移）
+        if (!saving && i > 0 && !rings_[i]->skip(needed))
+            std::cerr << "[" << name_ << "] ch" << (i + 1) << " skip(" << needed
+                      << ") failed\n";
         processedFrames_[i].fetch_add(batchSize_);
         processedBatches_[i].fetch_add(1);
         lastWritePos_[i].store(lastWrite + needed);

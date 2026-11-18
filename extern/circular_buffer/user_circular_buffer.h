@@ -13,6 +13,11 @@ public:
     size_t writeFromDevice(const void* data, size_t size);
     size_t readData(void* dest, size_t size);
     size_t peekData(void* dest, size_t size) const;
+    // 窥读读游标之后 off 处起的 size 字节（不移动游标）。
+    // 仅消费端使用；要求 off+size <= availableDataSize()（调用方先查）。
+    size_t peekAt(uint64_t off, void* dest, size_t size) const;
+    // 读游标前移 n 字节（丢弃）。仅消费端使用；n > available 时返回 false。
+    bool skip(size_t n);
     size_t availableDataSize() const;
     size_t availableFrames() const;
     size_t availableSpace() const;

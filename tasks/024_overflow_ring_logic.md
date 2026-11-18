@@ -82,11 +82,38 @@ Consumed = 实际过 storage 阶段的帧数，仅保存启用时计数；不存
 （B 方案"恢复恒喂"被否：不存时每批 +2×174MB memcpy ≈ 2.4GB/s@7批/s，
 与零丢帧目标相冲。）
 
+## 逻辑优化第一步：不存时选择读（用户约束"绝对不阻塞原始数据流"）
+
+**背景**：用户评估 100kHz × 4ch@1024 点 = 870MB/s/卡 ≈ PCIe gen3 x4（~3.94GB/s）
+的 22%，物理带宽不是瓶颈；瓶颈在软件搬运链。约束：**process 任何环节不得阻塞
+原始数据流**（ring 写满即丢、无锁已保证；唯一间接威胁 = process CPU 抢占拖慢
+2 个 DAQ 读线程 → SDK 缓冲保活超时）。
+
+**微基准（i7-8850H，单线程，1024 点/8ch/10000 帧批）**：
+read(174MB 整批 memcpy) ~26ms = 99.7%；scan(挑选帧,10000 trailer) 123µs；
+extract(分析帧,8×1024 样本) 24µs；log 66µs → 挑选/分析帧本身已足够快，
+大头是白拷贝（不存时 174MB 读进 batchBuf_ 后全部丢弃）。
+
+**实施**：
+- `UserCircularBuffer` 新增 `peekAt(off,dest,size)`（读游标+off 窥读，不动游标）
+  + `skip(n)`（游标前移丢 n 字节），均无锁、仅消费端调用；
+  单元验证：网格/wrap 双 memcpy/avail 守卫/并发写端全过。
+- `doConsumeOnce` 保存关时改选择读：ch1 整批 readData（对齐扫描用，21.76MB）
+  + 其余 7 通道 peekAt(selIdx 帧)取帧 + peekAt(0)首帧日志，游标统一 skip 前移
+  （ch>1）；保存开路径不变（整批读 + saveRing 全量写）。
+  纯消费端改动，写端零影响。
+
+**验证（SIM 冒烟，8ch）**：63 批零错误（无 peekAt/skip/短读/overflow）；
+8 通道每批 first_bunch_id 完全一致（1→100001→… 恰 +100000/批，无漂移）；
+t_us read 从首批 9.6ms 收敛到 **~1.5-2ms**（原 ~26ms，13× 降幅）；
+scan~300µs / ext~20µs / log~65µs 与微基准一致。
+
 ## 未做（后续）
 
-1. **逻辑优化实施**：等 t_us 分解数据。候选：save 关闭时跳过整批
-   174MB memcpy（ring 加 peekAt/skip 选择读）、削减每批 iostream、
-   若 early 大则改自适应分批（不等 8 通道齐 10000 帧）。
+1. **逻辑优化第二步（等 HW 数据）**：1024 场景 30s 采样 `t_us read/scan/ext/log
+   + early`。若 early 大 → 供数节奏问题（SDK pass 粒度/周期）；若 read 仍偏大
+   → 进一步（如 ch1 整批也改 trailer 稀疏读）；若 CPU 竞争仍高 → 削减每批
+   iostream / 线程亲和。选择读（第一步）已落地，HW 验证后定下一步。
 2. **根因 B**：start 重载检测到 TrigLength 变化时清 ring 残留。
 3. **用户约束**：触发频率/点数上限的校验与提示。
 4. 精确 100,000 Hz（现 100,828）等遗留低优先项不变。
