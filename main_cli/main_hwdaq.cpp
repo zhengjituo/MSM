@@ -56,6 +56,37 @@ static int countEnabledChannels(const ConfigImpl& cfg) {
     return n;
 }
 
+// 点数上限（总带宽 ~800MB/s 约束：下游还有网络传输需求）：
+//   每卡启用通道 ≥3 → 点数 ≤512（8ch 全开：8×1152B×100k ≈ 922MB/s）
+//   每卡启用通道 ≤2 → 点数 ≤1024（4ch：4×2176B×100k ≈ 870MB/s）
+// 依据：每卡单读线程串行 4 通道，通道访问周期 ≈ SDK 缓冲灌满时间，
+//       1024pt×每卡 4ch 贴极限运行（50s 实测丢 20-26%）；
+//       每卡 ≤2ch 时通道周期减半，落在读线程能力内
+static std::string checkTrigLengthCap(const ConfigImpl& cfg) {
+    for (const auto& card : cfg.cards) {
+        if (card.card_type != "1073") continue;
+        int nEn = 0, maxPts = 0;
+        for (const auto& ch : card.channels) {
+            if (!ch.runEnable) continue;
+            nEn++;
+            int pts = 0;
+            try { pts = std::stoi(ch.trig_length); } catch (...) {}
+            if (pts > maxPts) maxPts = pts;
+        }
+        if (nEn == 0) continue;
+        if (maxPts > 1024) {
+            return "卡 slot=" + std::to_string(card.slot) + " 点数 " + std::to_string(maxPts) +
+                   " 超过绝对上限 1024";
+        }
+        if (nEn >= 3 && maxPts > 512) {
+            return "卡 slot=" + std::to_string(card.slot) + " 启用 " + std::to_string(nEn) +
+                   " 通道（≥3）时点数上限 512，当前 " + std::to_string(maxPts) +
+                   "。请降为 512，或将该卡启用通道减至 ≤2（总带宽约束 ~800MB/s，含网络传输）";
+        }
+    }
+    return "";
+}
+
 class ControllerModule : public msm::Module {
 public:
     ControllerModule() : Module("Controller") {
@@ -169,6 +200,13 @@ int main() {
             return;
         }
         const auto& cfg2 = configModule.config();
+        {
+            const std::string capErr = checkTrigLengthCap(cfg2);
+            if (!capErr.empty()) {
+                failStart("点数限制: " + capErr);
+                return;
+            }
+        }
         int nChNew = countEnabledChannels(cfg2);
         if (nChNew != daq.getRingCount()) {
             failStart("启用通道数变化（" + std::to_string(daq.getRingCount()) + "→" +

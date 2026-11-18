@@ -425,9 +425,14 @@ bool ModuleDAQ::onStart() {
     // ── 启动接收 ────────────────────────────────────────────
     for (int i = 0; i < activeChCount_; i++) {
         auto& slot = activeChannels_[i];
-        // 32MB ≈ 280ms 数据：吸收读线程偶发停顿（实测 spike 至 150ms），
-        // 16MB(139ms) 在双卡下不足以覆盖 pass 周期
-        CxDeviceSetChannelRecvBufferSize(slot.cardHandle, slot.ch, 32 * 1024 * 1024);
+        // 128MB ≈ 614ms 数据@1024pt（512pt 时 1.17s）：方案A，吸收读线程
+        // 瞬态停顿（CPU 抢占/睿频切换，实测 spike 可达数百 ms）。
+        // 32MB 时灌满时间 ≈ 单卡 4ch 串行 pass 周期（154ms），零裕量 → 1024pt
+        // 50s 实测丢 20-26%；配合点数限制（8ch≤512 / 每卡≤2ch 才许 1024）
+        int32_t rcb = CxDeviceSetChannelRecvBufferSize(slot.cardHandle, slot.ch, 128 * 1024 * 1024);
+        if (rcb != 0)
+            std::cerr << "[ModuleDAQ] SetChannelRecvBufferSize(128MB) slot=" << slot.slot
+                      << " ch" << slot.ch << " rc=" << rcb << "（SDK 可能不支持，回退行为未知）\n";
         CxDeviceStartChannelRecv(slot.cardHandle, slot.ch);
         CxDeviceSetChannel(slot.cardHandle, slot.ch, "run");
         std::cout << "[ModuleDAQ] [" << nowStamp() << "] ch" << slot.ch << " (id=" << i << ") recv started\n";
@@ -479,6 +484,11 @@ void ModuleDAQ::onStop() {
     // 等读线程退出（避免与 stopChannels/flushAll 并发调 SDK 同一卡句柄）
     joinReadThreads();
 
+    // 停止 = 主动断流：bunch 基线清零。否则下一轮 start 时，停止间隙
+    // （秒级 bunch gap）会被误计成「上游丢帧」（实测每轮边界 4.3s gap）
+    for (int i = 0; i < activeChCount_; i++)
+        activeChannels_[i].lastBunch = 0;
+
     setTriggerOutput(false);
     std::cout << "[ModuleDAQ] [" << nowStamp() << "] 3010 trigger off\n";
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -508,7 +518,9 @@ void ModuleDAQ::onReset() {
         activeChannels_[i].upstreamDrops.store(0);
         activeChannels_[i].ringDropFrames.store(0);
         activeChannels_[i].lastBunch = 0;
-        activeChannels_[i].stepMin = 0;
+        activeChannels_[i].gapHist.fill(0);
+        activeChannels_[i].gapTotal = 0;
+        activeChannels_[i].stepMode = 0;
         if (activeChannels_[i].ring)
             activeChannels_[i].ring->resetOverflow();
     }
@@ -629,14 +641,32 @@ void ModuleDAQ::readLoop(int cardNo, const std::vector<int>& chIds) {
                     if (prev) {
                         if (bid <= prev) {   // bunch 回绕/卡复位：重新基线
                             prev = bid;
-                            slot.stepMin = 0;
                             continue;
                         }
                         uint64_t gap = bid - prev;
-                        if (slot.stepMin == 0 || gap < slot.stepMin) slot.stepMin = gap;
-                        if (slot.stepMin >= 4 && slot.stepMin <= 60 &&
-                            gap > (uint64_t)((double)slot.stepMin * 1.5)) {
-                            double d = (double)(gap - slot.stepMin) / (double)slot.stepMin;
+                        // 众数学习名义步长（100.828kHz → gap 9/10 交替，众数稳定）
+                        slot.gapTotal++;
+                        if (gap < 64) slot.gapHist[gap]++;
+                        if (slot.gapTotal % 1024 == 0) {
+                            if (slot.gapTotal < 100) {
+                                slot.stepMode = 0;
+                            } else {
+                                uint64_t best = 0, bm = 0;
+                                for (uint64_t g = 1; g < 64; g++)
+                                    if (slot.gapHist[g] > best) { best = slot.gapHist[g]; bm = g; }
+                                slot.stepMode = bm;
+                            }
+                        }
+                        if (gap > 1000000) {
+                            // 巨型 gap 诊断（排查读数异常：定位 pass/帧长/前后值）
+                            std::cerr << "[ModuleDAQ] ch" << slot.ch
+                                      << " HUGE GAP: pass=" << passNo << " n=" << n
+                                      << " flen=" << flen << " prev=" << prev
+                                      << " bid=" << bid << " gap=" << gap << "\n";
+                        }
+                        if (slot.stepMode >= 4 && slot.stepMode <= 60 &&
+                            gap > (uint64_t)((double)slot.stepMode * 1.5)) {
+                            double d = (double)(gap - slot.stepMode) / (double)slot.stepMode;
                             if (d > 0.5) {
                                 uint64_t add = (uint64_t)(d + 0.5);
                                 slot.upstreamDrops.fetch_add(add, std::memory_order_relaxed);
@@ -646,7 +676,7 @@ void ModuleDAQ::readLoop(int cardNo, const std::vector<int>& chIds) {
                                     slot.lastUpLogMs = nowMs;
                                     std::cerr << "[ModuleDAQ] ch" << slot.ch
                                               << " UPSTREAM DROP: bunch gap " << gap
-                                              << " (step " << slot.stepMin << "), 缺 " << add
+                                              << " (step " << slot.stepMode << "), 缺 " << add
                                               << " 帧（累计 "
                                               << slot.upstreamDrops.load(std::memory_order_relaxed)
                                               << "，卡/SDK 侧）\n";

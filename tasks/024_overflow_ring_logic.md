@@ -159,12 +159,70 @@ scan~300µs / ext~20µs / log~65µs 与微基准一致。
   （.ui 重生成，表头 CH|DAQ|Process|Batches|Consumed|丢帧|上游丢）
 - onReset 一并复位新计数器；构建 rc=0，.ui offscreen 加载 OK
 
+## 1024 丢帧根因定案 + 方案 A 部署（2026-11-18，预热双 start 长窗口法）
+
+### 误诊纠正（推翻"60% 上游丢失"结论）
+
+- **"提前停止"之谜**：进程首个 start 要 **16-20s 做 3 卡 initHW**（open→reset→
+  close 全周期），吃掉测试窗口——之前 35s 窗口实际触发只有 8-15s。铁证：日志
+  文件创建时间 12:58:49.77，trigger off 12:59:20.809 = 脚本 stop（32ms 内）。
+- **3.2e14 天文 sdk_drops** = kill -9 残留脏状态（SDK 缓冲旧数据），干净启动
+  不出现（本轮 0 复现）。
+- **512 不丢工况全窗口确认**（预热+40s，hw_512_long.log）：8 通道全部
+  3,883,386 帧完全一致、ovf=0、批间 100% 连续。
+
+### 1024 点真实丢失（50s 持续，hw_1024_long.log，双 start 第二轮 48.7s 窗口）
+
+- card1：3.827M/4.874M ≈ **丢 21.5%**，第二轮 ring ovf 545 次（第一轮 0）
+- card2：3.61M/4.874M ≈ **丢 26%**，ovf=0 → 纯卡/SDK 侧
+- 丢失层两轮之间"换卡" = **零裕量争用**：单卡读线程 4 通道串行，通道访问周期
+  ≈154ms ≈ 32MB SDK 缓冲灌满时间 154.2ms，CPU 抢占/睿频波动直接变丢帧
+- 机器：i7-8850H 6 核 12 线程，热路径 = 2 读线程（32MB×2 memcpy/pass）+
+  process（21.76MB/批）+ softIoc
+- **异常 A**：24 次 `first_bunch_id=0`，全在卡2 = 批头帧 magic 坏（帧完整性）
+- **异常 B**：861 条 HUGE GAP（gap≈1.71e14，48 位窄带聚集值，magic 还在）：
+  卡1 从 pass 119（约 18s）起**每 pass 必现**——系统性单向 onset，嫌疑
+  SDK 交接边界（每 pass 末帧 torn）或热状态切换；未定案
+
+### 检测器两处 bug 修复
+
+1. 名义步长 **min → 众数**（gapHist 64 bins，每 1024 gaps 重算 argmax）：
+   启动触发毛刺（实测 gap=6）把 min 钉死 → 512 干净工况 151 条误报；修后 0
+2. **onStop 清零 lastBunch**：停止间隙（秒级 bunch gap）被误计"上游丢"
+   （每轮边界 4.3s×8ch）；修后 0
+
+### 部署：方案 A + 点数限制（用户拍板，总带宽 ~800MB/s 含网络传输）
+
+- **A**：SDK 缓冲 `CxDeviceSetChannelRecvBufferSize` 32MB → **128MB**
+  （614ms@1024pt / 1.17s@512pt），吸收瞬态停顿；rc≠0 打告警
+- **点数限制** `checkTrigLengthCap`（`main_hwdaq.cpp`，g_startFn 拦截，
+  CLI/IPC 全 start 路径生效，明确错误信息）：
+  - 每卡启用 ≥3 通道 → ≤512 点（8ch 全开：8×1152B×100k ≈ 921.6MB/s 总）
+  - 每卡启用 ≤2 通道 → ≤1024 点（4ch：4×2176B×100k ≈ 870.4MB/s 总）
+  - 绝对上限 1024
+  - 帧长公式验证：`(TrigLength/NS)×2+128` → 512pt=1152B，1024pt=2176B
+- **验证**（hw_cap_test / hw_1024_4ch.log）：
+  - 8ch@1024 start → 拒绝："卡 slot=3 启用 4 通道（≥3）时点数上限 512…" ✓
+  - 4ch@1024（2+2，128MB 缓冲，39s 窗口）：**3,912,217 帧/通道，4 通道完全
+    一致，ovf=0，UPSTREAM DROP=0，卡1+卡2 批间 100% 连续 → 零丢失** ✓
+  - 8ch@512 复验（hw_512_8ch_final.log）：进行中
+
+### 注意（配置字段）
+
+- pending/runtime JSON 每通道两个使能字段：**`runEnable`（bool，应用级，
+  决定 ring/采集）** 与 `Enable`（string，卡参数字段）。改启用通道必须动
+  `runEnable`，误改 `Enable` 会被 ConfigImpl 忽略（本轮踩过）。
+
 ## 未做（后续）
 
-1. **逻辑优化第二步（等 HW 数据）**：1024 场景 30s 采样 `t_us read/scan/ext/log
-   + early`。若 early 大 → 供数节奏问题（SDK pass 粒度/周期）；若 read 仍偏大
-   → 进一步（如 ch1 整批也改 trailer 稀疏读）；若 CPU 竞争仍高 → 削减每批
-   iostream / 线程亲和。选择读（第一步）已落地，HW 验证后定下一步。
-2. **根因 B**：start 重载检测到 TrigLength 变化时清 ring 残留。
-3. **用户约束**：触发频率/点数上限的校验与提示。
-4. 精确 100,000 Hz（现 100,828）等遗留低优先项不变。
+1. **WaveDataEnable=0 极限长度测试（用户指定下一轮）**：关原始波形后
+   128B/帧（8ch 仅 102.4MB/s），测 TrigLength 能加到多少（卡侧采集能力
+   而非带宽极限）。
+2. **异常 B 根因**：garbage 帧（1.7e14，卡1 pass 119 起每 pass 必现）——
+   加诊断记录 garbage 帧在 pass 内位置（若恒为末帧 → SDK 交接边界问题，
+   找 SDK 方确认）。
+3. **异常 A**：卡2 批头帧 magic 坏（24 次）——与异常 B 疑同源。
+4. **回调模式（方案 C）** 仍作后备：A+点数限制后 4ch@1024 已零丢，若
+   WaveDataEnable=0 长点数测试再暴露瓶颈则上。
+5. **根因 B**：start 重载检测到 TrigLength 变化时清 ring 残留。
+6. 精确 100,000 Hz（现 100,828）等遗留低优先项不变。

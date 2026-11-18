@@ -74,7 +74,11 @@ private:
         std::atomic<uint64_t> upstreamDrops{0};   // 累计缺失帧数
         std::atomic<uint64_t> ringDropFrames{0};  // 本端 ring 满丢弃累计帧数（= 丢弃字节/帧长，精确）
         uint64_t lastBunch = 0;   // 最近读到帧的 bunch_id（跨 pass 连续性）
-        uint64_t stepMin = 0;     // 帧间最小 bunch 步长（名义步长；0=未学习）
+        // 名义步长 = gap 众数（每 1024 个 gap 重算 argmax）。不用最小值：
+        // 启动期触发毛刺会产生个别小 gap（实测 6），会把 min 钉死导致全误报
+        std::array<uint64_t, 64> gapHist{};
+        uint64_t gapTotal = 0;
+        uint64_t stepMode = 0;    // 0 = 未学习（样本 <100）
         int64_t lastUpLogMs = 0;  // UPSTREAM DROP 告警节流（1 条/秒）
     };
     // 每卡一个读线程（多卡单线程串行读 → pass 周期超过 SDK 16MB 缓冲保持时间 → 丢帧）
