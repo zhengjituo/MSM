@@ -178,6 +178,150 @@
           "prec": 0
         },
         {
+          "from": "DAQ:ch1_sdk_drops",
+          "pv": "${P}${I}DAQ:ch1_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch1_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch1_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch1_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch1_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch2_sdk_drops",
+          "pv": "${P}${I}DAQ:ch2_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch2_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch2_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch2_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch2_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch3_sdk_drops",
+          "pv": "${P}${I}DAQ:ch3_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch3_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch3_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch3_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch3_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch4_sdk_drops",
+          "pv": "${P}${I}DAQ:ch4_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch4_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch4_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch4_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch4_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch5_sdk_drops",
+          "pv": "${P}${I}DAQ:ch5_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch5_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch5_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch5_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch5_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch6_sdk_drops",
+          "pv": "${P}${I}DAQ:ch6_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch6_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch6_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch6_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch6_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch7_sdk_drops",
+          "pv": "${P}${I}DAQ:ch7_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch7_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch7_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch7_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch7_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch8_sdk_drops",
+          "pv": "${P}${I}DAQ:ch8_sdk_drops",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch8_ring_drop_frames",
+          "pv": "${P}${I}DAQ:ch8_ring_drop_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
+          "from": "DAQ:ch8_sdk_buf_frames",
+          "pv": "${P}${I}DAQ:ch8_sdk_buf_frames",
+          "egu": "count",
+          "prec": 0
+        },
+        {
           "from": "Process:ch1_frames",
           "pv": "${P}${I}Process:ch1_frames",
           "egu": "count",

@@ -89,7 +89,7 @@ tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-alig
   <!-- Consumed = 实际过 storage 阶段的帧数：仅保存启用时计数。
        不存时 process 不喂 ring2（a707931 省无效拷贝），Consumed=0 是预期，
        process 阶段消费看 Process 列。不叫 Storage 以免误解为"已存盘" -->
-  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th title="实际过 storage 阶段的帧数：仅保存启用时计数；不存时=0（process 不喂数据，省无效拷贝），process 阶段消费看 Process 列">Consumed</th><th title="ring 溢出丢批次数。&gt;0 = 消费速度跟不上生产，有数据丢失！">丢帧</th></tr></thead>
+  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th title="实际过 storage 阶段的帧数：仅保存启用时计数；不存时=0（process 不喂数据，省无效拷贝），process 阶段消费看 Process 列">Consumed</th><th title="本端 ring 满丢弃的累计帧数（精确）。&gt;0 = 消费跟不上生产，有数据丢失！">丢帧</th><th title="上游（卡/SDK 侧）丢失帧数，由 bunch_id 间隙推断（SDK 无计数器）。&gt;0 = 数据在进 ring 之前已丢！">上游丢</th></tr></thead>
   <tbody id="chTable"></tbody>
 </table>
 
@@ -287,7 +287,7 @@ function render(d) {
     if (grouped) {
       while (j < chs.length && chs[j].slot === slot) j++;
       cardNo++;
-      html += '<tr class="cardrow"><td colspan="6">Card#' + cardNo + ' · slot ' + slot + '</td></tr>';
+      html += '<tr class="cardrow"><td colspan="7">Card#' + cardNo + ' · slot ' + slot + '</td></tr>';
     } else {
       j = chs.length;
     }
@@ -298,9 +298,12 @@ function render(d) {
            + '<td>' + (ch.proc_frames || 0).toLocaleString() + '</td>'
            + '<td>' + (ch.proc_batches || 0).toLocaleString() + '</td>'
            + '<td>' + (ch.consumed_frames || 0).toLocaleString() + '</td>'
-           + '<td' + ((ch.overflow || 0) > 0
+           + '<td' + ((ch.ring_drop_frames || 0) > 0
                ? ' style="color:#ff5252;font-weight:bold"' : ' style="color:#777"')
-           + '>' + (ch.overflow || 0).toLocaleString() + '</td></tr>';
+           + '>' + (ch.ring_drop_frames || 0).toLocaleString() + '</td>'
+           + '<td' + ((ch.sdk_drops || 0) > 0
+               ? ' style="color:#ff5252;font-weight:bold"' : ' style="color:#777"')
+           + '>' + (ch.sdk_drops || 0).toLocaleString() + '</td></tr>';
     }
     i = j;
   }

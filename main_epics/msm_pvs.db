@@ -215,6 +215,246 @@ record(ai, "$(P)$(I)DAQ:ch8_overflow") {
     field(SCAN, "Passive")
 }
 
+record(ai, "$(P)$(I)DAQ:ch1_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch1_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch1_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch2_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch2_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch2_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch3_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch3_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch3_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch4_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch4_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch4_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch5_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch5_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch5_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch6_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch6_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch6_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch7_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch7_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch7_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch8_sdk_drops") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch8_ring_drop_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch8_sdk_buf_frames") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
 record(ai, "$(P)$(I)Process:ch1_frames") {
     field(DTYP, "Soft Channel")
     field(PREC, "0")
@@ -1077,4 +1317,4 @@ record(stringin, "$(P)$(I)CTRL:resp") {
     field(SCAN, "Passive")
 }
 
-# total records: 118
+# total records: 142

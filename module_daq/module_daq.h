@@ -48,6 +48,8 @@ public:
         std::vector<size_t> frame_size;
         std::vector<int> channel_ids;
         std::vector<int> slots;      // 每通道所在机箱卡槽（-1 未知）
+        std::vector<uint64_t> sdk_drops;         // 上游(卡/SDK)丢失帧数（bunch 间隙推断）
+        std::vector<uint64_t> ring_drop_frames;  // 本端 ring 满丢弃的累计帧数（精确）
         bool is_running = false;
     };
     Stats getStats() const;
@@ -68,6 +70,12 @@ private:
         bool contigChecked = false;
         // OVERFLOW 告警节流：每通道最多 1 条/秒（steady_clock ms）
         int64_t lastOvfLogMs = 0;
+        // 上游（卡/SDK 侧）丢帧：SDK 无计数器，由 bunch_id 序列间隙推断
+        std::atomic<uint64_t> upstreamDrops{0};   // 累计缺失帧数
+        std::atomic<uint64_t> ringDropFrames{0};  // 本端 ring 满丢弃累计帧数（= 丢弃字节/帧长，精确）
+        uint64_t lastBunch = 0;   // 最近读到帧的 bunch_id（跨 pass 连续性）
+        uint64_t stepMin = 0;     // 帧间最小 bunch 步长（名义步长；0=未学习）
+        int64_t lastUpLogMs = 0;  // UPSTREAM DROP 告警节流（1 条/秒）
     };
     // 每卡一个读线程（多卡单线程串行读 → pass 周期超过 SDK 16MB 缓冲保持时间 → 丢帧）
     std::vector<std::thread> readThreads_;

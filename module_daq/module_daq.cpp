@@ -18,6 +18,11 @@
 #include <sys/time.h>
 
 // 原子取 max（API 计时用）
+static inline uint64_t readU48BE(const uint8_t* p) {
+    return ((uint64_t)p[0] << 40) | ((uint64_t)p[1] << 32) | ((uint64_t)p[2] << 24) |
+           ((uint64_t)p[3] << 16) | ((uint64_t)p[4] << 8) | (uint64_t)p[5];
+}
+
 static void atomicMax(std::atomic<int64_t>& v, int64_t x) {
     for (;;) {
         int64_t cur = v.load(std::memory_order_relaxed);
@@ -107,6 +112,8 @@ ModuleDAQ::Stats ModuleDAQ::getStats() const {
         const auto& slot = activeChannels_[i];
         s.total_frames.push_back(slot.totalFrames.load());
         s.overflow_count.push_back(slot.ring ? slot.ring->getOverflowCount() : 0);
+        s.sdk_drops.push_back(slot.upstreamDrops.load());
+        s.ring_drop_frames.push_back(slot.ringDropFrames.load());
         s.frame_size.push_back(slot.frameSize.load());
         s.channel_ids.push_back(slot.ch);
         s.slots.push_back(slot.slot);
@@ -498,6 +505,10 @@ void ModuleDAQ::onStop() {
 void ModuleDAQ::onReset() {
     for (int i = 0; i < activeChCount_; i++) {
         activeChannels_[i].totalFrames.store(0);
+        activeChannels_[i].upstreamDrops.store(0);
+        activeChannels_[i].ringDropFrames.store(0);
+        activeChannels_[i].lastBunch = 0;
+        activeChannels_[i].stepMin = 0;
         if (activeChannels_[i].ring)
             activeChannels_[i].ring->resetOverflow();
     }
@@ -511,6 +522,20 @@ void ModuleDAQ::onStatus(msm::Message& response) {
                           std::to_string(s.total_frames[i]));
         response.data.set("ch" + std::to_string(i + 1) + "_overflow",
                           std::to_string(s.overflow_count[i]));
+        response.data.set("ch" + std::to_string(i + 1) + "_sdk_drops",
+                          std::to_string(s.sdk_drops[i]));
+        response.data.set("ch" + std::to_string(i + 1) + "_ring_drop_frames",
+                          std::to_string(s.ring_drop_frames[i]));
+        // SDK 侧缓冲占用（尚未读回的帧数；上游丢帧的前置指标，满=正在丢）
+        if (acquiring_.load() && activeChannels_[i].cardHandle) {
+            uint32_t fcount = 0;
+            int32_t rc = CxDeviceGetChannelFramesCount(activeChannels_[i].cardHandle,
+                                                       activeChannels_[i].ch, &fcount);
+            response.data.set("ch" + std::to_string(i + 1) + "_sdk_buf_frames",
+                              rc == 0 ? std::to_string(fcount) : "0");
+        } else {
+            response.data.set("ch" + std::to_string(i + 1) + "_sdk_buf_frames", "0");
+        }
         response.data.set("ch" + std::to_string(i + 1) + "_frame_size",
                           std::to_string(s.frame_size[i]));
         response.data.set("ch" + std::to_string(i + 1) + "_slot",
@@ -589,12 +614,58 @@ void ModuleDAQ::readLoop(int cardNo, const std::vector<int>& chIds) {
                 if (bytes == 0) continue;
             }
 
+            // Bunch 连续性检查：上游（卡/SDK）丢帧必须可见。SDK 无计数器
+            //（实测 GetChannelStatus 各名字均无效）→ 由 bunch_id 序列间隙推断：
+            // 1 bunch/µs 全局时钟，帧间步长 ≈ 1e6/触发率（100.828kHz → 9/10 交替，
+            // 名义步长取最小间隙）；真实丢帧产生 gap > 1.5× 步长。
+            if (flen >= 72) {
+                const uint8_t* base = buf.data();
+                uint64_t prev = slot.lastBunch;
+                for (uint32_t j = 0; j < n; j++) {
+                    const uint8_t* f = base + (size_t)j * flen;
+                    if (f[0] != 0xEB || f[1] != 0x91) continue;
+                    uint64_t bid = readU48BE(f + flen - 64 + 2);
+                    if (bid == 0) continue;
+                    if (prev) {
+                        if (bid <= prev) {   // bunch 回绕/卡复位：重新基线
+                            prev = bid;
+                            slot.stepMin = 0;
+                            continue;
+                        }
+                        uint64_t gap = bid - prev;
+                        if (slot.stepMin == 0 || gap < slot.stepMin) slot.stepMin = gap;
+                        if (slot.stepMin >= 4 && slot.stepMin <= 60 &&
+                            gap > (uint64_t)((double)slot.stepMin * 1.5)) {
+                            double d = (double)(gap - slot.stepMin) / (double)slot.stepMin;
+                            if (d > 0.5) {
+                                uint64_t add = (uint64_t)(d + 0.5);
+                                slot.upstreamDrops.fetch_add(add, std::memory_order_relaxed);
+                                int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                                if (nowMs - slot.lastUpLogMs > 1000) {
+                                    slot.lastUpLogMs = nowMs;
+                                    std::cerr << "[ModuleDAQ] ch" << slot.ch
+                                              << " UPSTREAM DROP: bunch gap " << gap
+                                              << " (step " << slot.stepMin << "), 缺 " << add
+                                              << " 帧（累计 "
+                                              << slot.upstreamDrops.load(std::memory_order_relaxed)
+                                              << "，卡/SDK 侧）\n";
+                                }
+                            }
+                        }
+                    }
+                    prev = bid;
+                }
+                if (prev) slot.lastBunch = prev;
+            }
+
             slot.frameSize.store(flen);
             slot.ring->setExpectedPacketSize(flen);
             size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
             if (written < bytes) {
                 // ring 满 → 本 pass 整批丢弃。节流告警（每通道 1 条/秒），
-                // 丢帧必须可见：计数同时经 Status chN_overflow 暴露到 PV/webui
+                // 丢帧必须可见：计数同时经 Status chN_overflow/ring_drop_frames 暴露到 PV/webui
+                slot.ringDropFrames.fetch_add((bytes - written) / flen, std::memory_order_relaxed);
                 int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                     std::chrono::steady_clock::now().time_since_epoch()).count();
                 if (nowMs - slot.lastOvfLogMs > 1000) {
@@ -675,9 +746,11 @@ void ModuleDAQ::flushAll() {
         slot.frameSize.store(flen);
         slot.ring->setExpectedPacketSize(flen);
         size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
-        if (written < bytes)
+        if (written < bytes) {
+            slot.ringDropFrames.fetch_add((bytes - written) / flen, std::memory_order_relaxed);
             std::cerr << "[ModuleDAQ] ch" << slot.ch << " OVERFLOW(flush): ring 满，丢 "
                       << (bytes - written) / flen << " 帧\n";
+        }
         slot.totalFrames.fetch_add(written / flen);
         size_t ovf = slot.ring->getOverflowCount();
         std::cout << "[flush] ch" << slot.ch << " id=" << i

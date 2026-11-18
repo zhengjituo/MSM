@@ -132,11 +132,18 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
     consumed_tip = ("实际过 storage 阶段的帧数：仅保存启用时计数。"
                     "不存时 =0（process 不喂数据到 storage 阶段，省无效拷贝），"
                     "process 阶段消费看 Process 列")
-    for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Consumed", "丢帧"]):
+    for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Consumed", "丢帧", "上游丢"]):
         w = add_to_grid(fg, 0, 0 + c, "QLabel", f"hdr_frame_{card_no}_{c}",
                         text=("string", h))
         if h == "Consumed":
             prop(w, "toolTip", "string", consumed_tip)
+        if h == "丢帧":
+            prop(w, "toolTip", "string",
+                 "本端 ring 满丢弃事件数。>0 = 消费跟不上生产")
+        if h == "上游丢":
+            prop(w, "toolTip", "string",
+                 "上游（卡/SDK 侧）丢失帧数，由 bunch_id 间隙推断（SDK 无计数器）。"
+                 ">0 = 数据在进 ring 之前已丢")
     for r, ch in enumerate(channels, start=1):
         add_to_grid(fg, r, 0, "QLabel", f"lbl_frame_ch{ch}", text=("string", f"CH{ch}"))
         for c, (label, pattern) in enumerate(
@@ -144,7 +151,8 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
                  ("proc", "Process:ch%d_frames"),
                  ("batches", "Process:ch%d_batches"),
                  ("stor", "Storage:ch%d_consumed_frames"),
-                 ("ovf", "DAQ:ch%d_overflow")], start=1):
+                 ("ovf", "DAQ:ch%d_overflow"),
+                 ("updrop", "DAQ:ch%d_sdk_drops")], start=1):
             addr = pv_or_none(varmap, pattern % ch)
             name = f"lbl_{label}_ch{ch}"
             if addr:

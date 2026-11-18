@@ -135,6 +135,19 @@
                         <property name="text">
                           <string>丢帧</string>
                         </property>
+                        <property name="toolTip">
+                          <string>本端 ring 满丢弃事件数。&gt;0 = 消费跟不上生产</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="6">
+                      <widget class="QLabel" name="hdr_frame_1_6">
+                        <property name="text">
+                          <string>上游丢</string>
+                        </property>
+                        <property name="toolTip">
+                          <string>上游（卡/SDK 侧）丢失帧数，由 bunch_id 间隙推断（SDK 无计数器）。&gt;0 = 数据在进 ring 之前已丢</string>
+                        </property>
                       </widget>
                     </item>
                     <item row="1" column="0">
@@ -176,6 +189,13 @@
                       <widget class="PyDMLabel" name="lbl_ovf_ch1">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch1_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch1">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch1_sdk_drops</cstring>
                         </property>
                       </widget>
                     </item>
@@ -221,6 +241,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="2" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch2">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch2_sdk_drops</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="3" column="0">
                       <widget class="QLabel" name="lbl_frame_ch3">
                         <property name="text">
@@ -263,6 +290,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="3" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch3">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch3_sdk_drops</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="4" column="0">
                       <widget class="QLabel" name="lbl_frame_ch4">
                         <property name="text">
@@ -302,6 +336,13 @@
                       <widget class="PyDMLabel" name="lbl_ovf_ch4">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch4_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch4">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch4_sdk_drops</cstring>
                         </property>
                       </widget>
                     </item>
@@ -729,6 +770,19 @@
                         <property name="text">
                           <string>丢帧</string>
                         </property>
+                        <property name="toolTip">
+                          <string>本端 ring 满丢弃事件数。&gt;0 = 消费跟不上生产</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="6">
+                      <widget class="QLabel" name="hdr_frame_2_6">
+                        <property name="text">
+                          <string>上游丢</string>
+                        </property>
+                        <property name="toolTip">
+                          <string>上游（卡/SDK 侧）丢失帧数，由 bunch_id 间隙推断（SDK 无计数器）。&gt;0 = 数据在进 ring 之前已丢</string>
+                        </property>
                       </widget>
                     </item>
                     <item row="1" column="0">
@@ -770,6 +824,13 @@
                       <widget class="PyDMLabel" name="lbl_ovf_ch5">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch5_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch5">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch5_sdk_drops</cstring>
                         </property>
                       </widget>
                     </item>
@@ -815,6 +876,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="2" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch6">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch6_sdk_drops</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="3" column="0">
                       <widget class="QLabel" name="lbl_frame_ch7">
                         <property name="text">
@@ -857,6 +925,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="3" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch7">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch7_sdk_drops</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="4" column="0">
                       <widget class="QLabel" name="lbl_frame_ch8">
                         <property name="text">
@@ -896,6 +971,13 @@
                       <widget class="PyDMLabel" name="lbl_ovf_ch8">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}DAQ:ch8_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="6">
+                      <widget class="PyDMLabel" name="lbl_updrop_ch8">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch8_sdk_drops</cstring>
                         </property>
                       </widget>
                     </item>

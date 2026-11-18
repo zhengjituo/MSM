@@ -108,6 +108,57 @@ extract(分析帧,8×1024 样本) 24µs；log 66µs → 挑选/分析帧本身�
 t_us read 从首批 9.6ms 收敛到 **~1.5-2ms**（原 ~26ms，13× 降幅）；
 scan~300µs / ext~20µs / log~65µs 与微基准一致。
 
+## 1024 点真机测试（hw_1024_sel.log，35s，8ch，512MB ring）
+
+**结论：消费端已不是瓶颈；瓶颈上移到"卡→SDK 交付"段，且 60% 的丢失发生在
+我们 ring 之前、当前完全不可见。**
+
+数据（生产 = 100k 帧/s/通道 = 217.6MB/s）：
+- process：read p50=4.3ms、early p50=15（基本无等待）→ 消费端快 ✓
+- 但批率仅 3.5 批/s（被最慢卡供水限速），捕获 1.45M(card1)/1.23M(card2) 帧
+- **前 62 批 100% 连续**（bunch 恰 +100000/批；109/123 批 dist=0）→ 链路本身
+  无损能力没问题
+- 第 63 批起（~5.5s，ring 渐满）批间出现 bunch 断点，ch1 ring ovf=209 次
+  ≈1.31M 帧（37%）；card2 ovf=0
+- **上游丢失**（card/SDK 内，无统计）：card1 余 ~0.7M（20%）；card2 ≈2.3M
+  （65%！card2 读线程 gap 仅 3 次、交付却只有 35k/s → 丢失全在 ring 之前）
+- card1 读线程 pass 周期 p50=230ms（78 次 gap>50ms）、SDK api p95=37ms
+  → 4 通道串行轮询周期 > SDK 缓冲灌满时间（1024 点 ~73ms，512 点 ~139ms
+  所以 512 干净）
+
+**下一步候选**：
+1. SDK 回调模式（`CxDeviceSetChannelRecvCallback` + `CxDeviceStartChannelRecv`，
+   回调 `void (void* package, uint32_t length, void* userData)`）——数据到了
+   即推，消除 230ms 轮询周期；需验证回调线程语义/每通道并发注册
+2. 用 `CxDeviceGetChannelStatus` 探测卡/SDK 侧缓冲与溢出计数器——上游丢失
+   必须可见（否则"零丢帧"无法证明）
+3. 兜底：用户约束（降触发率至 50kHz / 点数上限 512）
+
+## 第 2 项落地：上游（卡/SDK）丢失可见性
+
+**SDK 探测结论**（sdk_probe，只读）：
+- `CxDeviceGetChannelStatus`/`GetCardStatus` 候选名字（Overflow/Lost/Drop/Buffer
+  等 40+ 个）全部 rc=-4 无效 → **SDK 不暴露任何丢帧计数器**
+- `CxDeviceGetChannelFramesCount` 可用（通道号 1 起）→ SDK 缓冲占用可查
+  （空闲实测残留 3854 帧/通道/卡，与 pass 大小吻合）
+- `CxDeviceSetChannelRecvBufferSize` 存在（缓冲可配，后续调大候选）
+- 回调模式 `CxDeviceSetChannelRecvCallback` 存在（第 1 项候选）
+
+**实现（SDK 无计数器 → 软件推断）**：
+- DAQ 读线程 per-frame bunch 连续性检查：1 bunch/µs 全局时钟，名义步长取
+  最小间隙（100.828kHz → 9/10 交替，抖动不误报），gap > 1.5×步长 计缺失帧
+  `(gap-step)/step` 四舍五入；跨 pass 连续（lastBunch 持久）；bunch 回绕/复位
+  重新基线。per-pass 开销 ~0.2ms（1.5 万帧 trailer 扫描），可忽略。
+  → `chN_sdk_drops`（上游丢失帧数）+ 节流告警 `UPSTREAM DROP: bunch gap N
+  (step S), 缺 X 帧（累计 Y，卡/SDK 侧）`
+- ring 丢帧精确化：`chN_ring_drop_frames`（= 丢弃字节/帧长，读循环+flush 两处）
+- SDK 缓冲占用：`chN_sdk_buf_frames`（onStatus 时 GetChannelFramesCount，
+  上游丢帧的前置指标）
+- 暴露链：Status → pv_map slow 组 +24 PV（.db 142 条）→ webui 计数表
+  "丢帧"列改帧数 + 新"上游丢"列（colspan 7）→ PyDM 帧数表 +上游丢列
+  （.ui 重生成，表头 CH|DAQ|Process|Batches|Consumed|丢帧|上游丢）
+- onReset 一并复位新计数器；构建 rc=0，.ui offscreen 加载 OK
+
 ## 未做（后续）
 
 1. **逻辑优化第二步（等 HW 数据）**：1024 场景 30s 采样 `t_us read/scan/ext/log
