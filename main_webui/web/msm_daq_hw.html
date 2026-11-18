@@ -86,8 +86,10 @@ tr.cardrow td { background: #0f3460; color: #7ab0ff; font-weight: 600; text-alig
 
 <h2>Frame Summary</h2>
 <table>
-  <!-- Consumed = storage 阶段消耗的帧数（不管是否落盘都计数），不叫 Storage 以免误解为已存盘 -->
-  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th>Consumed</th><th title="ring 溢出丢批次数。&gt;0 = 消费速度跟不上生产，有数据丢失！">丢帧</th></tr></thead>
+  <!-- Consumed = 实际过 storage 阶段的帧数：仅保存启用时计数。
+       不存时 process 不喂 ring2（a707931 省无效拷贝），Consumed=0 是预期，
+       process 阶段消费看 Process 列。不叫 Storage 以免误解为"已存盘" -->
+  <thead><tr><th>Ch</th><th>DAQ</th><th>Process</th><th>Batches</th><th title="实际过 storage 阶段的帧数：仅保存启用时计数；不存时=0（process 不喂数据，省无效拷贝），process 阶段消费看 Process 列">Consumed</th><th title="ring 溢出丢批次数。&gt;0 = 消费速度跟不上生产，有数据丢失！">丢帧</th></tr></thead>
   <tbody id="chTable"></tbody>
 </table>
 

@@ -68,6 +68,20 @@
   预期看到 丢帧 列递增、OVERFLOW 日志、以及新的 `t_us ... early=` 行
   （30s 采样后把日志给我，定优化方向）。
 
+## Consumed 语义对齐（用户拍板 A）
+
+**问题**：不存时 `Consumed` 恒 0，与 webui 老注释"不管是否落盘都计数"不符。
+**根因**：storage 侧恒排空 ring2 并计数（discard 路径），但 process 侧自
+`a707931`（10-26，省无效拷贝）起**仅在保存启用时喂 ring2** → 不存时 ring2
+无水，计数 0。老注释是"恒写 era"（7238d1b 起）的语义残留。
+**决策（A）**：保留 perf（不存不喂 ring2），语义改准——
+Consumed = 实际过 storage 阶段的帧数，仅保存启用时计数；不存时 0 是
+预期，process 阶段消费（ring1 恒被消费）看 Process 列。
+**落地**：webui 注释 + `Consumed` 表头 tooltip、gen_pydm 同文案 tooltip
+（.ui 重生成，offscreen 验证 2 个 tab 各 1 个 tooltip），零性能改动。
+（B 方案"恢复恒喂"被否：不存时每批 +2×174MB memcpy ≈ 2.4GB/s@7批/s，
+与零丢帧目标相冲。）
+
 ## 未做（后续）
 
 1. **逻辑优化实施**：等 t_us 分解数据。候选：save 关闭时跳过整批

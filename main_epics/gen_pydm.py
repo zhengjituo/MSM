@@ -125,12 +125,18 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
                        {"class": "QGridLayout", "name": f"frameGrid{card_no}"})
 
     # 列顺序对齐 webui：Ch | DAQ | Process | Batches | Consumed | 丢帧
-    # （consumed = storage 阶段消耗的帧数，不管是否真的落盘都计数，
-    #   显示名不用模块名 Storage，避免误解为"已存盘帧数"；
-    #   丢帧 = ring 溢出丢批次数，>0 即有数据丢失，必须可见）
+    # （Consumed = 实际过 storage 阶段的帧数：仅保存启用时计数。
+    #   不存时 process 不喂 ring2（a707931 省无效拷贝），Consumed=0 是预期，
+    #   process 阶段消费看 Process 列；显示名不用模块名 Storage，
+    #   避免误解为"已存盘帧数"；丢帧 = ring 溢出丢批次数，>0 即有数据丢失）
+    consumed_tip = ("实际过 storage 阶段的帧数：仅保存启用时计数。"
+                    "不存时 =0（process 不喂数据到 storage 阶段，省无效拷贝），"
+                    "process 阶段消费看 Process 列")
     for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Consumed", "丢帧"]):
-        add_to_grid(fg, 0, 0 + c, "QLabel", f"hdr_frame_{card_no}_{c}",
-                    text=("string", h))
+        w = add_to_grid(fg, 0, 0 + c, "QLabel", f"hdr_frame_{card_no}_{c}",
+                        text=("string", h))
+        if h == "Consumed":
+            prop(w, "toolTip", "string", consumed_tip)
     for r, ch in enumerate(channels, start=1):
         add_to_grid(fg, r, 0, "QLabel", f"lbl_frame_ch{ch}", text=("string", f"CH{ch}"))
         for c, (label, pattern) in enumerate(

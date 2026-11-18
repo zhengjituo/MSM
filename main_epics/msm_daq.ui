@@ -125,6 +125,9 @@
                         <property name="text">
                           <string>Consumed</string>
                         </property>
+                        <property name="toolTip">
+                          <string>实际过 storage 阶段的帧数：仅保存启用时计数。不存时 =0（process 不喂数据到 storage 阶段，省无效拷贝），process 阶段消费看 Process 列</string>
+                        </property>
                       </widget>
                     </item>
                     <item row="0" column="5">
@@ -715,6 +718,9 @@
                       <widget class="QLabel" name="hdr_frame_2_4">
                         <property name="text">
                           <string>Consumed</string>
+                        </property>
+                        <property name="toolTip">
+                          <string>实际过 storage 阶段的帧数：仅保存启用时计数。不存时 =0（process 不喂数据到 storage 阶段，省无效拷贝），process 阶段消费看 Process 列</string>
                         </property>
                       </widget>
                     </item>
