@@ -66,6 +66,8 @@ private:
         // SDK 返回帧连续性（文档：连续 n 帧）；首次读取验证后决定单次大 memcpy 还是逐帧
         bool contigOk = true;
         bool contigChecked = false;
+        // OVERFLOW 告警节流：每通道最多 1 条/秒（steady_clock ms）
+        int64_t lastOvfLogMs = 0;
     };
     // 每卡一个读线程（多卡单线程串行读 → pass 周期超过 SDK 16MB 缓冲保持时间 → 丢帧）
     std::vector<std::thread> readThreads_;

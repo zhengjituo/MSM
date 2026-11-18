@@ -86,6 +86,9 @@ private:
     std::atomic<bool> consuming_{false};
     std::atomic<bool> emergencyStop_{false};
     std::atomic<bool> flushing_{false};
+    // 消费瓶颈诊断：两次成功 batch 之间 doConsumeOnce 的早退次数
+    // （大 = 在等数据到齐，非 CPU 瓶颈；~0 且单批耗时长 = CPU 瓶颈）
+    uint64_t profEarly_ = 0;
     // 保存开关：saveFlag_ 为待生效（Start 时应用，与 Storage「下次 start 生效」语义一致）；
     // 关闭时 Process 不写 saveRing，避免「写 ring → Storage 丢弃」的纯浪费拷贝
     std::atomic<bool> saveFlag_{false};

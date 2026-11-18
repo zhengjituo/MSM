@@ -124,10 +124,11 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
     fg = ET.SubElement(fr, "layout",
                        {"class": "QGridLayout", "name": f"frameGrid{card_no}"})
 
-    # 列顺序对齐 webui：Ch | DAQ | Process | Batches | Consumed
+    # 列顺序对齐 webui：Ch | DAQ | Process | Batches | Consumed | 丢帧
     # （consumed = storage 阶段消耗的帧数，不管是否真的落盘都计数，
-    #   显示名不用模块名 Storage，避免误解为"已存盘帧数"）
-    for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Consumed"]):
+    #   显示名不用模块名 Storage，避免误解为"已存盘帧数"；
+    #   丢帧 = ring 溢出丢批次数，>0 即有数据丢失，必须可见）
+    for c, h in enumerate(["CH", "DAQ", "Process", "Batches", "Consumed", "丢帧"]):
         add_to_grid(fg, 0, 0 + c, "QLabel", f"hdr_frame_{card_no}_{c}",
                     text=("string", h))
     for r, ch in enumerate(channels, start=1):
@@ -136,7 +137,8 @@ def build_card_page(tabs, card_no, channels, varmap, wave_pattern):
                 [("daq", "DAQ:ch%d_frames"),
                  ("proc", "Process:ch%d_frames"),
                  ("batches", "Process:ch%d_batches"),
-                 ("stor", "Storage:ch%d_consumed_frames")], start=1):
+                 ("stor", "Storage:ch%d_consumed_frames"),
+                 ("ovf", "DAQ:ch%d_overflow")], start=1):
             addr = pv_or_none(varmap, pattern % ch)
             name = f"lbl_{label}_ch{ch}"
             if addr:

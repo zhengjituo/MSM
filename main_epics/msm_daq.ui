@@ -127,6 +127,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="0" column="5">
+                      <widget class="QLabel" name="hdr_frame_1_5">
+                        <property name="text">
+                          <string>丢帧</string>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="1" column="0">
                       <widget class="QLabel" name="lbl_frame_ch1">
                         <property name="text">
@@ -159,6 +166,13 @@
                       <widget class="PyDMLabel" name="lbl_stor_ch1">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch1_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch1">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch1_overflow</cstring>
                         </property>
                       </widget>
                     </item>
@@ -197,6 +211,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="2" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch2">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch2_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="3" column="0">
                       <widget class="QLabel" name="lbl_frame_ch3">
                         <property name="text">
@@ -232,6 +253,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="3" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch3">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch3_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="4" column="0">
                       <widget class="QLabel" name="lbl_frame_ch4">
                         <property name="text">
@@ -264,6 +292,13 @@
                       <widget class="PyDMLabel" name="lbl_stor_ch4">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch4_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch4">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch4_overflow</cstring>
                         </property>
                       </widget>
                     </item>
@@ -683,6 +718,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="0" column="5">
+                      <widget class="QLabel" name="hdr_frame_2_5">
+                        <property name="text">
+                          <string>丢帧</string>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="1" column="0">
                       <widget class="QLabel" name="lbl_frame_ch5">
                         <property name="text">
@@ -715,6 +757,13 @@
                       <widget class="PyDMLabel" name="lbl_stor_ch5">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch5_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch5">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch5_overflow</cstring>
                         </property>
                       </widget>
                     </item>
@@ -753,6 +802,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="2" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch6">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch6_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="3" column="0">
                       <widget class="QLabel" name="lbl_frame_ch7">
                         <property name="text">
@@ -788,6 +844,13 @@
                         </property>
                       </widget>
                     </item>
+                    <item row="3" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch7">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch7_overflow</cstring>
+                        </property>
+                      </widget>
+                    </item>
                     <item row="4" column="0">
                       <widget class="QLabel" name="lbl_frame_ch8">
                         <property name="text">
@@ -820,6 +883,13 @@
                       <widget class="PyDMLabel" name="lbl_stor_ch8">
                         <property name="channel" stdset="0">
                           <cstring>ca://${P}${I}Storage:ch8_consumed_frames</cstring>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="5">
+                      <widget class="PyDMLabel" name="lbl_ovf_ch8">
+                        <property name="channel" stdset="0">
+                          <cstring>ca://${P}${I}DAQ:ch8_overflow</cstring>
                         </property>
                       </widget>
                     </item>

@@ -592,6 +592,18 @@ void ModuleDAQ::readLoop(int cardNo, const std::vector<int>& chIds) {
             slot.frameSize.store(flen);
             slot.ring->setExpectedPacketSize(flen);
             size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
+            if (written < bytes) {
+                // ring 满 → 本 pass 整批丢弃。节流告警（每通道 1 条/秒），
+                // 丢帧必须可见：计数同时经 Status chN_overflow 暴露到 PV/webui
+                int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                if (nowMs - slot.lastOvfLogMs > 1000) {
+                    slot.lastOvfLogMs = nowMs;
+                    std::cerr << "[ModuleDAQ] ch" << slot.ch << " OVERFLOW: ring 满，本 pass 丢 "
+                              << (bytes - written) / flen << " 帧（累计 "
+                              << slot.ring->getOverflowCount() << " 次丢弃）\n";
+                }
+            }
             auto t2 = std::chrono::steady_clock::now();
             int64_t copyUs = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
             slot.copyUs.fetch_add(copyUs, std::memory_order_relaxed);
@@ -663,6 +675,9 @@ void ModuleDAQ::flushAll() {
         slot.frameSize.store(flen);
         slot.ring->setExpectedPacketSize(flen);
         size_t written = slot.ring->writeFromDevice(buf.data(), bytes);
+        if (written < bytes)
+            std::cerr << "[ModuleDAQ] ch" << slot.ch << " OVERFLOW(flush): ring 满，丢 "
+                      << (bytes - written) / flen << " 帧\n";
         slot.totalFrames.fetch_add(written / flen);
         size_t ovf = slot.ring->getOverflowCount();
         std::cout << "[flush] ch" << slot.ch << " id=" << i

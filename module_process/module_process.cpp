@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <chrono>
 #include <time.h>
 #include <sys/time.h>
 
@@ -443,7 +444,7 @@ void ModuleProcess::doConsumeOnce() {
         if (writeTotal - lastWrite < needed) { allReady = false; break; }
         if (rings_[i]->availableFrames() < batchSize_) { allReady = false; break; }
     }
-    if (!allReady) return;
+    if (!allReady) { profEarly_++; return; }
 
     int64_t curBatch = processedBatches_[0].load() + 1;
 
@@ -459,6 +460,8 @@ void ModuleProcess::doConsumeOnce() {
     }
 
     // 先读所有通道数据到 batchBuf_（ch1,ch2..chN 顺序排列）
+    // 消费瓶颈计时：read=ring读+saveRing写 / scan=step检测+对齐扫描 / ext=取帧 / log=日志输出
+    auto pt0 = std::chrono::steady_clock::now();
     size_t totalBytes = 0;
     size_t offsets[MAX_CH];
     for (int i = 0; i < nCh_; i++) {
@@ -483,6 +486,7 @@ void ModuleProcess::doConsumeOnce() {
         saveRing_->writeFromDevice(batchBuf_.data(), totalBytes);
 
     if (totalBytes == 0) return;
+    auto pt1 = std::chrono::steady_clock::now();
 
     // Detect bunchId step from ch0
     size_t flen0 = rings_[0] ? rings_[0]->getExpectedPacketSize() : 0;
@@ -529,6 +533,8 @@ void ModuleProcess::doConsumeOnce() {
         }
     }
 
+    auto pt2 = std::chrono::steady_clock::now();
+
     // Extract selected frame from each channel
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
@@ -538,6 +544,7 @@ void ModuleProcess::doConsumeOnce() {
         batchData_[i].batchNo = curBatch;
         batchNo_.store(curBatch);
     }
+    auto pt3 = std::chrono::steady_clock::now();
 
     // Print per-channel log line (first frame bunch_id)
     std::string ts;
@@ -591,6 +598,7 @@ void ModuleProcess::doConsumeOnce() {
         printRow("y",        &BatchFrameData::y);
         printRow("i",        &BatchFrameData::i);
     }
+    auto pt4 = std::chrono::steady_clock::now();
 
     for (int i = 0; i < nCh_; i++) {
         size_t flen = rings_[i]->getExpectedPacketSize();
@@ -608,5 +616,20 @@ void ModuleProcess::doConsumeOnce() {
                          + " -@ WebUI";
         msm::Message readyMsg = msm::NIStringParser::parse(body, name_);
         msm::MessageBus::instance().send(readyMsg);
+    }
+
+    // 本批耗时分解（early = 本批之前等数据到齐的早退轮询次数，大=被供数限速）
+    {
+        auto us = [](const std::chrono::steady_clock::time_point& a,
+                     const std::chrono::steady_clock::time_point& b) {
+            return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count();
+        };
+        std::cout << "[" << name_ << "] batch=" << curBatch
+                  << " t_us read=" << us(pt0, pt1)
+                  << " scan=" << us(pt1, pt2)
+                  << " ext=" << us(pt2, pt3)
+                  << " log=" << us(pt3, pt4)
+                  << " early=" << profEarly_ << "\n";
+        profEarly_ = 0;
     }
 }

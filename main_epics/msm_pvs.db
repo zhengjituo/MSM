@@ -135,6 +135,86 @@ record(ai, "$(P)$(I)DAQ:ch8_frames") {
     field(SCAN, "Passive")
 }
 
+record(ai, "$(P)$(I)DAQ:ch1_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch2_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch3_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch4_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch5_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch6_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch7_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
+record(ai, "$(P)$(I)DAQ:ch8_overflow") {
+    field(DTYP, "Soft Channel")
+    field(PREC, "0")
+    field(EGU,  "count")
+    field(LOPR, "-1e9")
+    field(HOPR, "1e9")
+    field(ADEL, "0")
+    field(SCAN, "Passive")
+}
+
 record(ai, "$(P)$(I)Process:ch1_frames") {
     field(DTYP, "Soft Channel")
     field(PREC, "0")
@@ -997,4 +1077,4 @@ record(stringin, "$(P)$(I)CTRL:resp") {
     field(SCAN, "Passive")
 }
 
-# total records: 110
+# total records: 118

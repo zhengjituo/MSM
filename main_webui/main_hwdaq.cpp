@@ -207,6 +207,7 @@ struct ChannelStatus {
     int64_t proc_frames = 0;
     int64_t proc_batches = 0;
     int64_t consumed_frames = 0;
+    int64_t overflow = 0;   // ring 溢出丢批次数（>0 = 有数据丢失）
     int slot = -1;   // 机箱卡槽（-1 = 后端未提供，如 sim）
 };
 
@@ -270,6 +271,7 @@ static AppSnapshot parseSnapshot(json& daqJ, json& procJ, json& storJ, bool save
         c.proc_frames = std::stoll(procJ.value(pk, "0"));
         c.proc_batches = std::stoll(procJ.value(pb, "0"));
         c.consumed_frames = std::stoll(storJ.value(sk, "0"));
+        c.overflow = std::stoll(daqJ.value("ch" + idx + "_overflow", "0"));
         try { c.slot = std::stoi(daqJ.value("ch" + idx + "_slot", "-1")); } catch (...) {}
     }
     snap.channels = nCh;
@@ -339,6 +341,7 @@ static std::string buildSseData(const AppSnapshot& snap) {
         o << ",\"proc_frames\":" << c.proc_frames;
         o << ",\"proc_batches\":" << c.proc_batches;
         o << ",\"consumed_frames\":" << c.consumed_frames;
+        o << ",\"overflow\":" << c.overflow;
         o << "}";
     }
     o << "],\"features\":[";
