@@ -81,7 +81,7 @@ CSM 报告的示例管线与本实例一一对应：
 | | `sdk_include/` | 硬件 SDK 头文件 |
 | 文档 | `docs/`、`tasks/` | 设计文档与可追溯的任务流水 |
 
-`module_datachannel/`、`main_config_editor/`、`tools/` 同样是实例，按需取用。
+框架自测在 `module_core/tests/`（calculator 示例、DataChannel 跨进程测试）。
 
 ## 用法
 

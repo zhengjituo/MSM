@@ -26,4 +26,3 @@ add_subdirectory(main_cli)   # msm_cli_simsrc, msm_cli_hwdaq, msm_ipc_shell
 
 add_subdirectory(main_webui)   # msm_webui (IPC-to-HTTP bridge)
 add_subdirectory(main_epics)   # msm_epics (IPC-to-EPICS CA bridge, external IOC)
-# add_subdirectory(main_config_editor)   # 已合并进 main_webui，保留源码停构建
