@@ -42,47 +42,9 @@ MSM 把这同一套契约搬进 C++，面向 AI 编码场景：CSM 服务的团�
 
 ### 模块与数据流向
 
-原始数据流（实线）永不阻塞，ring 满即丢、丢帧必暴露；控制与状态（虚线）全部走消息与自动导出的状态变量：
+实线为原始数据流：ring 满即丢、丢帧必暴露，永不阻塞。虚线为控制与状态：全部走消息与自动导出的状态变量。
 
-```mermaid
-flowchart TB
-    subgraph CTRL["控制面 — 入口"]
-        direction LR
-        CLI["main_cli<br/>CLI + IPC"]
-        WEB["main_webui<br/>浏览器监控"]
-        EPC["main_epics<br/>EPICS / PyDM"]
-    end
-
-    subgraph HW["硬件"]
-        direction LR
-        TRIG["3010 触发卡"]
-        CARD["1073 采集卡 ×1–4<br/>4–16 通道 @ 1 GSa/s"]
-    end
-
-    subgraph DSP["数据面 — 原始数据流（ring 满即丢，永不阻塞）"]
-        direction LR
-        DAQ["module_daq<br/>每卡读线程 + SDK 缓冲"]
-        R1[("每通道 ring<br/>512MB")]
-        PROC["module_process<br/>帧解析 + 特征提取"]
-        R2[("ring2")]
-        STOR["module_storage<br/>批量落盘 + 轮转"]
-        DISK[("磁盘")]
-    end
-
-    SIM["module_simsource<br/>仿真源"]
-    CFG["module_config<br/>pending → runtime"]
-
-    TRIG -->|100kHz 触发| CARD
-    CARD -->|SDK 帧流| DAQ
-    DAQ --> R1 --> PROC
-    PROC -->|保存启用时| R2 --> STOR --> DISK
-
-    CTRL -->|start / stop / status 消息| DSP
-    DAQ -.->|触发使能 / 停止| TRIG
-    SIM -.->|仿真模式替换采集卡| DAQ
-    CFG -.->|start 时配置交接| DSP
-    DSP -.->|状态变量自动导出 IPC / REST / EPICS| CTRL
-```
+![模块与数据流向](docs/images/flow.png)
 
 CSM 报告的示例管线与本实例一一对应：
 
@@ -116,7 +78,7 @@ CSM 报告的示例管线与本实例一一对应：
 | | `sdk_include/` | 硬件 SDK 头文件 |
 | 文档 | `docs/`、`tasks/` | 设计文档与可追溯的任务流水 |
 
-`module_calculator/`、`module_datachannel/`、`main_config_editor/`、`tools/` 同样是实例，按需取用。
+`module_datachannel/`、`main_config_editor/`、`tools/` 同样是实例，按需取用。
 
 ## 用法
 
