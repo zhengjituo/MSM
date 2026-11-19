@@ -111,3 +111,7 @@ CLI 命令：`start`、`stop`、`enablesave`、`disablesave`、`status`、`quit`
 当前为单机部署，多机调度与硬实时指标未覆盖。
 
 联系：zhengjituo@gmail.com
+
+<div align="center">
+  <img src="docs/images/MSM_logo2.png" width="100" alt="MSM logo"/>
+</div>
