@@ -58,10 +58,13 @@ static int countEnabledChannels(const ConfigImpl& cfg) {
 
 // 点数上限（总带宽 ~800MB/s 约束：下游还有网络传输需求）：
 //   每卡"开波形"通道 ≥3 → 点数 ≤512（8ch 全开：8×1152B×100k ≈ 922MB/s）
-//   每卡"开波形"通道 ≤2 → 点数 ≤1024（4ch：4×2176B×100k ≈ 870MB/s）
-// 依据：每卡单读线程串行 4 通道，通道访问周期 ≈ SDK 缓冲灌满时间，
-//       1024pt×每卡 4ch 贴极限运行（50s 实测丢 20-26%）；
-//       每卡 ≤2ch 时通道周期减半，落在读线程能力内
+//   每卡"开波形"通道 =2 → 点数 ≤1024（4ch：4×2176B×100k ≈ 870MB/s）
+//   每卡"开波形"通道 =1 → 不限制（长时范围观察需求，用户自控）
+// 依据：每卡单读线程串行通道，通道访问周期 vs SDK 缓冲灌满时间：
+//       每卡 4ch×1024pt：32MB 缓冲时代 50s 实测丢 20-26%；128MB 缓冲后
+//       45s 实测仍丢 14-18%（hw_1024_4chpercard.log）→ ≥3ch 维持 512
+//       每卡 2ch×1024pt：通道周期减半，实测零丢（hw_1024_4ch.log）
+//       每卡 1ch：读线程仅服务 1 通道，点数受卡侧采集（触发周期）限制
 // 关原始波形（WaveDataEnable=0）豁免：帧长恒为 128B（仅包头/包尾），带宽
 //   128B×触发率，与点数无关（8ch 仅 ~102MB/s）→ 不再受点数上限约束，
 //   点数仅受卡侧采集能力（触发周期）限制，用测试探边界
@@ -78,10 +81,11 @@ static std::string checkTrigLengthCap(const ConfigImpl& cfg) {
             try { pts = std::stoi(ch.trig_length); } catch (...) {}
             if (pts > maxPts) maxPts = pts;
         }
-        if (nWaveOn == 0) continue;   // 全关波形 → 带宽可忽略，无点数上限
+        if (nWaveOn <= 1) continue;   // ≤1 开波形通道：不设上限（单通道长时范围
+                                      // 观察需求，用户自控；0 个=全关波形带宽可忽略）
         if (maxPts > 1024) {
             return "卡 slot=" + std::to_string(card.slot) + " 点数 " + std::to_string(maxPts) +
-                   " 超过绝对上限 1024";
+                   " 超过上限 1024（≥2 开波形通道时；单通道不限）";
         }
         if (nWaveOn >= 3 && maxPts > 512) {
             return "卡 slot=" + std::to_string(card.slot) + " 开波形 " + std::to_string(nWaveOn) +
