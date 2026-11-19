@@ -57,31 +57,37 @@ static int countEnabledChannels(const ConfigImpl& cfg) {
 }
 
 // 点数上限（总带宽 ~800MB/s 约束：下游还有网络传输需求）：
-//   每卡启用通道 ≥3 → 点数 ≤512（8ch 全开：8×1152B×100k ≈ 922MB/s）
-//   每卡启用通道 ≤2 → 点数 ≤1024（4ch：4×2176B×100k ≈ 870MB/s）
+//   每卡"开波形"通道 ≥3 → 点数 ≤512（8ch 全开：8×1152B×100k ≈ 922MB/s）
+//   每卡"开波形"通道 ≤2 → 点数 ≤1024（4ch：4×2176B×100k ≈ 870MB/s）
 // 依据：每卡单读线程串行 4 通道，通道访问周期 ≈ SDK 缓冲灌满时间，
 //       1024pt×每卡 4ch 贴极限运行（50s 实测丢 20-26%）；
 //       每卡 ≤2ch 时通道周期减半，落在读线程能力内
+// 关原始波形（WaveDataEnable=0）豁免：帧长恒为 128B（仅包头/包尾），带宽
+//   128B×触发率，与点数无关（8ch 仅 ~102MB/s）→ 不再受点数上限约束，
+//   点数仅受卡侧采集能力（触发周期）限制，用测试探边界
 static std::string checkTrigLengthCap(const ConfigImpl& cfg) {
     for (const auto& card : cfg.cards) {
         if (card.card_type != "1073") continue;
-        int nEn = 0, maxPts = 0;
+        int nWaveOn = 0, maxPts = 0;
         for (const auto& ch : card.channels) {
             if (!ch.runEnable) continue;
-            nEn++;
+            // 关波形：帧 = 128B 固定（包头/包尾），带宽与点数无关，不计入上限
+            if (ch.wave_data_enable == "0" || ch.wave_data_enable == "false") continue;
+            nWaveOn++;
             int pts = 0;
             try { pts = std::stoi(ch.trig_length); } catch (...) {}
             if (pts > maxPts) maxPts = pts;
         }
-        if (nEn == 0) continue;
+        if (nWaveOn == 0) continue;   // 全关波形 → 带宽可忽略，无点数上限
         if (maxPts > 1024) {
             return "卡 slot=" + std::to_string(card.slot) + " 点数 " + std::to_string(maxPts) +
                    " 超过绝对上限 1024";
         }
-        if (nEn >= 3 && maxPts > 512) {
-            return "卡 slot=" + std::to_string(card.slot) + " 启用 " + std::to_string(nEn) +
+        if (nWaveOn >= 3 && maxPts > 512) {
+            return "卡 slot=" + std::to_string(card.slot) + " 开波形 " + std::to_string(nWaveOn) +
                    " 通道（≥3）时点数上限 512，当前 " + std::to_string(maxPts) +
-                   "。请降为 512，或将该卡启用通道减至 ≤2（总带宽约束 ~800MB/s，含网络传输）";
+                   "。请降为 512、减少开波形通道至 ≤2，或关闭原始波形 WaveDataEnable=0"
+                   "（总带宽约束 ~800MB/s，含网络传输）";
         }
     }
     return "";
