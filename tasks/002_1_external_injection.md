@@ -1,6 +1,6 @@
-# Task 025 — 扩展 MessageBus 支持外部消息注入
+# Task 002_1 — 扩展 MessageBus 支持外部消息注入
 
-> 2026-04-22（补编号，原文件名 `20260422_01_external_injection.md`）
+> 2026-04-22（日期制时代早期任务，原文件名 `20260422_01_external_injection.md`）
 
 ## 状态
 - [x] 已完成

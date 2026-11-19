@@ -1,6 +1,6 @@
-# Task 026 — Module 独立 CLI 终端
+# Task 002_2 — Module 独立 CLI 终端
 
-> 2026-04-28（补编号，原文件名 `20260428_01_module_cli_terminal.md`）
+> 2026-04-28（日期制时代早期任务，原文件名 `20260428_01_module_cli_terminal.md`）
 
 ## 状态
 - [x] 已完成

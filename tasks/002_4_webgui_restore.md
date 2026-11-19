@@ -1,6 +1,6 @@
-# Task 028 — WebGUI Restore
+# Task 002_4 — WebGUI Restore
 
-> 2026-07-09（补编号，原文件名 `20260709_webgui_restore.md`）
+> 2026-07-09（日期制时代早期任务，原文件名 `20260709_webgui_restore.md`）
 
 ## 状态
 - [x] 已完成

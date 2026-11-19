@@ -1,6 +1,6 @@
-# Task 027 — ZMQServer + RESTServer 实现
+# Task 002_3 — ZMQServer + RESTServer 实现
 
-> 2026-06-04（补编号，原文件名 `20260604_01_zmq_rest_servers.md`）
+> 2026-06-04（日期制时代早期任务，原文件名 `20260604_01_zmq_rest_servers.md`）
 
 ## 状态
 - [x] 已完成
