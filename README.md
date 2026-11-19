@@ -118,3 +118,7 @@ CLI 命令：`start`、`stop`、`enablesave`、`disablesave`、`status`、`quit`
 <div align="center">
   <img src="docs/images/MSM_logo2.png" width="100" alt="MSM logo"/>
 </div>
+
+<div align="center">
+  <img src="docs/images/MSM_equation_Q.png" alt="MSM equation"/>
+</div>
