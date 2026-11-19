@@ -1,73 +1,47 @@
-# Task 历史
+# Task 索引
 
-## 2025-04
+任务文件统一为 `NNN_<desc>.md`：起始 commit、TODO、执行日志、done、结束 commit。工作流见 `AGENTS.md`。
 
-### 20250407_01: Message + NI Parser + Queue ✅
+| 编号 | 任务 | 日期 |
+|:--|:--|:--|
+| 025 | 扩展 MessageBus 支持外部消息注入 | 2026-04-22 |
+| 026 | Module 独立 CLI 终端 | 2026-04-28 |
+| 027 | ZMQServer + RESTServer 实现 | 2026-06-04 |
+| 028 | WebGUI Restore | 2026-07-09 |
+| 003 | 目录重构 + Workflow 落实 | 2026-07-21 |
+| 004 | calculator/datachannel → module_core/tests/，module_sim → module_simsource | 2026-07-21 |
+| 005 | 删除旧版框架 `msm/` | 2026-07-21 |
+| 006 | V1: Storage discard mode（读取丢弃，不写盘） | 2026-07-21 |
+| 007 | V1 CLI stable + IPC 交互 / stop drain + ready 信号 | 2026-07-22 |
+| 008 | 修订 V2/V3 路线图 + main_simsrc 对齐 hwdaq | 2026-07-22 |
+| 004 | enablesave/disablesave + saveRing 对齐修复 | 2026-07-22 |
+| 008 | ConfigModule：可复用的配置管理模块 | 2026-07-24 |
+| 009 | WebUI 后端进程管理 + C++ frame_parser 库 | 2026-07-27 |
+| 010 | 波形原始数据提取 + ECharts 前端波形显示 | 2026-07-29 |
+| 011 | EffectiveDataExtraction 参数格式修正 (hex→decimal) + WorkMode | 2026-07-29 |
+| 012 | webui 后台进程优雅退出，xdma 资源释放 | 2026-08-12 |
+| 013 | webui 优雅退出：svr.stop() + SIGHUP | 2026-08-12 |
+| 014 | 独立 config 编辑器（module_config + msm_config_editor） | 2026-08-13 |
+| 015 | config 编辑器合并进主程序（阶段 B） | 2026-08-13 |
+| 016 | 阶段 C：webui config 入口 + 磁盘空间安全（P0-B） | 2026-08-14 |
+| 017 | Config 单链式生效：pending → runtime，移除 reload | 2026-08-24 |
+| 018 | 多卡采集支持（≤4×1073，严格 slot 匹配） | 2026-10-21 |
+| 019 | 双卡深挖：丢帧 / 处理效率 / bunch 相位 / 波形 tab | 2026-10-26 |
+| 020 | PV 推送限频（2–10Hz）+ 投影单向化 | 2026-11 |
+| 021 | PyDM 控制界面，操作逻辑对齐 webui | 2026-11 |
+| 022 | 合并 EPICS 分支（main_epics/PyDM）与多卡分支 | 2026-11-16 |
+| 023 | PyDM 多卡 tab + 波形/退出三个隐性 bug | 2026-11-17 |
+| 024 | 丢帧治理：overflow 暴露 + ring 可配 + 消费瓶颈计时 | 2026-11-18 |
 
-- 实现 Message 结构（cmd + data）
-- 实现 NI 字符串解析器（parseNI）
-- 实现 MessageQueue（优先级、peek）
+> 025–028 为日期制时代（原 `2026MMDD_*.md`）早期任务的补编号：编号是序号，不表示时间先后，时序以日期列为准。004 / 008 各有两条，为历史编号撞车。
 
----
+## 遗留文档（已归档至 `docs/archive/`）
 
-### 20250407_02: Module 基类 ✅
-
-- 实现 Module 抽象基类
-- handleState() 接口
-- start()/stop() 生命周期管理
-- 内部线程 + 消息队列
-
----
-
-### 20250408_03: MessageBus 路由核心 ✅
-
-- registerModule() / unregisterModule()
-- postMessage() 路由
-- 同步调用 handleState + Response
-
----
-
-### 20250408_03_01: 同步调用 Timeout 修复 ✅
-
-- post() 不等待，sendAndWait() 轮询
-- 超时返回 Timeout
-- EmergencyStop 中断等待
-
----
-
-### 20250408_03_02: DryRun 测试模式 ✅
-
-- setDryRun(true) 自动响应
-- 无需真实硬件即可测试流程
-
----
-
-### 20250408_03_03: 响应处理 ✅
-
-- Response 消息通过 handleState 处理
-- 不占用主消息循环
-
----
-
-### 20250408_04: 简化 post() 接口 ✅
-
-- 支持 NI 字符串直接调用
-- `post("API >> args -@ Target")`
-
----
-
-### 20250408_04: 广播订阅 ✅
-
-- `<register>` / `<unregister>` 订阅表
-- `<broadcast>` 分发
-- bySubscriber 清理
-
----
-
-### 20250408_05: 构造参数 + 自动注销 ✅
-
-- Module 构造函数传 name
-- stop() 自动从 MessageBus 注销
-- bySubscriber 清理订阅
-
----
+| 文档 | 说明 |
+|:--|:--|
+| `20260616_handoff.md` | 工作移交文档（2026-06-16） |
+| `20260618_msm_core_upgrade_plan.md` | MSM Core 升级计划 |
+| `20260618_msm_daq_epics.md` | EPICS 集成交接文档 |
+| `20260618_msm_daq_handoff.md` | MSM_DAQ → module_core 升级交接文档 |
+| `requirements.md` | 早期 SHINE_CSM 需求列表 |
+| `tasks_history_shine_csm.md` | SHINE_CSM 时代任务流水（原 tasks/README.md） |

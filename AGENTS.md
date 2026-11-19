@@ -15,7 +15,7 @@ MSM_DAQ/
 │   ├── data_formats/        # [P3] 数据结构
 │   └── archive/             # [P4] 历史
 │
-├── tasks/                   # 可追溯的 task 流水号 .md
+├── tasks/                   # 可追溯的 task 流水号 .md（README.md 为索引）
 │   ├── 003_reorg_workflow.md
 │   └── <NNN>_<desc>.md      # 含：TODO、起始 commit、执行日志、done、结束 commit
 │

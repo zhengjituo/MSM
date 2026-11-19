@@ -1,4 +1,9 @@
-# Context: WebGUI Restore - 2026-07-09
+# Task 028 — WebGUI Restore
+
+> 2026-07-09（补编号，原文件名 `20260709_webgui_restore.md`）
+
+## 状态
+- [x] 已完成
 
 ## 当前状态
 - module_process 已加 `declareVar`: ch1~4 的 trig_id/bunch_id/frames/batches

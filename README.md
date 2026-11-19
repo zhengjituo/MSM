@@ -37,7 +37,7 @@ MSM 把这同一套契约搬进 C++，面向 AI 编码场景：CSM 服务的团�
 | 每个增量影响面明确、可追溯可回退 | 消息即唯一契约：影响面等于契约面 |
 | 每个增量独立验证，反馈闭环在模块粒度 | 单模块可验证：验证不依赖整机 |
 
-`tasks/` 下的 32 份任务文件就是这个环的产物。
+`tasks/` 下的 28 份任务文件就是这个环的产物。
 
 ---
 
@@ -108,7 +108,7 @@ CLI 命令：`start`、`stop`、`enablesave`、`disablesave`、`status`、`quit`
 | 文档 | 内容 |
 |:--|:--|
 | `docs/arch/design.md` | 框架设计：消息模型、MessageBus、接口层 |
-| `tasks/` | 32 份决策与实测记录 |
+| `tasks/` | 28 份任务记录（决策与实测，含索引） |
 | `docs/arch/MSMvsEPICS.md` | 与 EPICS、Bluesky 的架构对比 |
 
 ---
